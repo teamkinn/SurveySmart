@@ -468,6 +468,7 @@ async function submitToGoogle(state) {
       close_date:      form.value.closeDate || undefined,
       questions,
       google_form_url: data.formUrl,
+      google_form_id:  data.formId,
     });
     emit('created');
 

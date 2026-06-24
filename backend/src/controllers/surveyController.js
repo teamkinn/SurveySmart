@@ -35,13 +35,13 @@ exports.get = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const { title, description, close_date, questions, google_form_url } = req.body;
+    const { title, description, close_date, questions, google_form_url, google_form_id } = req.body;
     if (!title) return res.status(400).json({ message: 'กรุณาระบุชื่อแบบสอบถาม' });
 
     const token = genToken();
     const [result] = await db.query(
-      'INSERT INTO surveys (user_id, title, description, status, close_date, share_token, google_form_url) VALUES (?,?,?,?,?,?,?)',
-      [req.user.id, title, description || '', 'draft', close_date || null, token, google_form_url || null]
+      'INSERT INTO surveys (user_id, title, description, status, close_date, share_token, google_form_url, google_form_id) VALUES (?,?,?,?,?,?,?,?)',
+      [req.user.id, title, description || '', 'draft', close_date || null, token, google_form_url || null, google_form_id || null]
     );
     const surveyId = result.insertId;
 
