@@ -27,8 +27,6 @@
         </RouterLink>
       </div>
       <div class="top-nav-right">
-        <!-- Notification -->
-        <NotifDropdown />
         <button class="btn-new" @click="openBuilder">＋ สร้างแบบสอบถาม</button>
       </div>
     </div>
@@ -48,7 +46,6 @@ import { ref, computed, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useSurveyStore } from '@/stores/surveys';
-import NotifDropdown from '@/components/Notifications/NotifDropdown.vue';
 import SurveyBuilder from '@/components/Survey/SurveyBuilder.vue';
 
 const router      = useRouter();

@@ -23,24 +23,6 @@
           <div class="builder-info"><label>ชื่อแบบสอบถาม *</label><input v-model="form.title" placeholder="เช่น แบบประเมินความพึงพอใจ 2568"></div>
           <div class="builder-info"><label>คำอธิบาย</label><textarea v-model="form.description" rows="2" placeholder="อธิบายวัตถุประสงค์ของแบบสอบถาม"></textarea></div>
           <div class="builder-info"><label>วันสิ้นสุด</label><input type="date" v-model="form.closeDate"></div>
-          <div class="ai-box">
-            <div class="ai-box-header">
-              <span class="ai-icon">🤖</span>
-              <div>
-                <div class="ai-box-title">AI Template Generator</div>
-                <div class="ai-box-sub">บอกหัวข้อ — Claude สร้างคำถามทั้งชุดให้ทันที</div>
-              </div>
-            </div>
-            <div class="ai-input-row">
-              <input v-model="aiTopic" class="ai-topic-input" placeholder="เช่น ประเมินความพึงพอใจการบริการลูกค้า" @keyup.enter="generateWithAI">
-              <button class="ai-generate-btn" :disabled="aiLoading" @click="generateWithAI">
-                <span v-if="aiLoading" class="ai-spinner">⟳</span>
-                <span v-else>✨ สร้างเลย</span>
-              </button>
-            </div>
-            <div v-if="aiError" class="ai-error">{{ aiError }}</div>
-            <div v-if="aiSuccess > 0" class="ai-success">✓ สร้างคำถาม {{ aiSuccess }} ข้อแล้ว — แก้ไขได้ในขั้นตอนถัดไป</div>
-          </div>
         </div>
 
         <!-- Step 2: Section 1 -->
@@ -292,11 +274,6 @@ const openPickerId = ref(null);
 const dragOverId   = ref(null);
 let   dragSrc      = { sec: null, id: null };
 
-const aiTopic   = ref('');
-const aiLoading = ref(false);
-const aiError   = ref('');
-const aiSuccess = ref(0);
-
 const form = ref({ title: '', description: '', closeDate: '' });
 
 // Google Forms state
@@ -375,27 +352,6 @@ function setSection(sec, val) {
 function addQ(sec) { getSection(sec).push(mkQ('short', '')); }
 function deleteQ(sec, id) { setSection(sec, getSection(sec).filter(q => q.id !== id)); }
 
-// ── AI ────────────────────────────────────────────────────────
-async function generateWithAI() {
-  if (!aiTopic.value.trim()) { aiError.value = 'กรุณาระบุหัวข้อ'; return; }
-  aiLoading.value = true; aiError.value = ''; aiSuccess.value = 0;
-  try {
-    const { data } = await api.post('/ai/generate', { topic: aiTopic.value });
-    const qs = data.questions || [];
-    qId = 0; sec1.value = []; sec2.value = []; sec3.value = [];
-    qs.forEach(q => {
-      const s = q.section || 1;
-      getSection(s).push(mkQ(q.type || 'short', q.text || '', q.opts || []));
-    });
-    aiSuccess.value = qs.length;
-    if (!form.value.title) form.value.title = aiTopic.value;
-  } catch (e) {
-    aiError.value = e.response?.data?.message || 'เกิดข้อผิดพลาด';
-  } finally {
-    aiLoading.value = false;
-  }
-}
-
 // ── Drag ──────────────────────────────────────────────────────
 function onDragStart(e, sec, id) {
   dragSrc = { sec, id };
@@ -416,7 +372,6 @@ function onDrop(e, sec, targetId) {
 // ── Navigation ────────────────────────────────────────────────
 function open() {
   form.value = { title: '', description: '', closeDate: '' };
-  aiTopic.value = ''; aiError.value = ''; aiSuccess.value = 0;
   gfPhase.value    = 'preview';
   gfFormUrl.value  = '';
   gfQrDataUrl.value = '';
@@ -534,21 +489,6 @@ defineExpose({ open });
 </script>
 
 <style scoped>
-.ai-box { margin-top:16px; background:linear-gradient(135deg,#EFF6FF,#F0FDF4); border:1.5px solid #BFDBFE; border-radius:var(--r); padding:14px 16px; }
-.ai-box-header { display:flex; align-items:flex-start; gap:10px; margin-bottom:12px; }
-.ai-icon { font-size:22px; }
-.ai-box-title { font-size:13px; font-weight:700; color:var(--navy); }
-.ai-box-sub   { font-size:11px; color:var(--text3); margin-top:2px; }
-.ai-input-row { display:flex; gap:8px; }
-.ai-topic-input { flex:1; padding:8px 12px; border:1.5px solid #BFDBFE; border-radius:var(--r2); font-family:'Sarabun',sans-serif; font-size:13px; outline:none; background:white; }
-.ai-topic-input:focus { border-color:var(--royal); }
-.ai-generate-btn { padding:8px 16px; background:var(--navy); color:white; border:none; border-radius:var(--r2); cursor:pointer; font-family:'Sarabun',sans-serif; font-size:12px; font-weight:700; white-space:nowrap; }
-.ai-generate-btn:hover:not(:disabled) { background:var(--royal); }
-.ai-generate-btn:disabled { opacity:.6; cursor:not-allowed; }
-.ai-spinner { display:inline-block; animation:spin .8s linear infinite; }
-@keyframes spin { to { transform:rotate(360deg); } }
-.ai-error   { margin-top:8px; font-size:11px; color:var(--red); }
-.ai-success { margin-top:8px; font-size:11px; color:var(--green); font-weight:600; }
 .drag-handle { cursor:grab; color:var(--text3); font-size:16px; padding:2px 4px; user-select:none; flex-shrink:0; }
 .q-card.drag-over { border-color:var(--royal); box-shadow:0 0 0 2px rgba(26,86,160,.15); }
 .q-type-picker { position:relative; flex-shrink:0; }

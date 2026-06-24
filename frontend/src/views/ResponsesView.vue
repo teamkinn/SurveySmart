@@ -6,6 +6,7 @@
         <div style="font-size:17px;font-weight:800;color:var(--navy);">{{ survey?.title }}</div>
         <div style="font-size:11px;color:var(--text3);">ผลการตอบกลับ</div>
       </div>
+      <span v-if="isShared" style="font-size:11px;background:rgba(26,86,160,.08);color:var(--royal);border:1px solid rgba(26,86,160,.2);border-radius:20px;padding:3px 10px;font-weight:600;">👁️ View Only</span>
       <span v-if="survey" class="survey-badge" :class="badgeClass(survey.status)">{{ badgeText(survey.status) }}</span>
     </div>
 
@@ -96,7 +97,12 @@ const surveyStore = useSurveyStore();
 const responses   = ref([]);
 const activeTab   = ref('list');
 
-const survey = computed(() => surveyStore.list.find(s => s.id === Number(route.params.id)) || null);
+const survey   = computed(() =>
+  surveyStore.list.find(s => s.id === Number(route.params.id)) ||
+  surveyStore.shared.find(s => s.id === Number(route.params.id)) ||
+  null
+);
+const isShared = computed(() => !surveyStore.list.find(s => s.id === Number(route.params.id)) && !!surveyStore.shared.find(s => s.id === Number(route.params.id)));
 
 const avgScore = computed(() => {
   const scores = responses.value.map(r => parseFloat(r.score)).filter(s => !isNaN(s));

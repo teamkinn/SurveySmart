@@ -69,24 +69,6 @@ exports.submit = async (req, res) => {
       );
     }
 
-    // Notifications
-    const [[survey]] = await conn.query('SELECT * FROM surveys WHERE id = ?', [surveyId]);
-    if (survey) {
-      const [[{ cnt }]] = await conn.query(
-        'SELECT COUNT(*) AS cnt FROM responses WHERE survey_id = ?', [surveyId]
-      );
-      let type = 'new', title = 'มีคำตอบใหม่!', msg = `${survey.title} มีผู้ตอบใหม่เข้ามา`;
-      if (survey.target_responses && cnt === survey.target_responses) {
-        type = 'goal'; title = 'ถึงเป้าหมายแล้ว! 🎉'; msg = `${survey.title} ครบ ${survey.target_responses} คนแล้ว`;
-      } else if (survey.target_responses && cnt === Math.floor(survey.target_responses * 0.8)) {
-        type = 'warn'; title = 'ใกล้ถึงเป้าหมาย ⚡'; msg = `${survey.title} ตอบแล้ว ${cnt}/${survey.target_responses} คน (80%)`;
-      }
-      await conn.query(
-        'INSERT INTO notifications (user_id, type, title, message, survey_id) VALUES (?,?,?,?,?)',
-        [survey.user_id, type, title, msg, surveyId]
-      );
-    }
-
     await conn.commit();
     res.status(201).json({ id: responseId, message: 'ส่งคำตอบเรียบร้อยแล้ว' });
   } catch (err) {
