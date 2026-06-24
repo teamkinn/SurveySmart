@@ -16,14 +16,16 @@ exports.list = async (req, res) => {
       `SELECT r.*,
               JSON_ARRAYAGG(
                 JSON_OBJECT(
-                  'question_id',  ra.question_id,
-                  'answer_text',  ra.answer_text,
-                  'answer_json',  ra.answer_json,
-                  'score',        ra.score
+                  'question_id',   ra.question_id,
+                  'answer_text',   ra.answer_text,
+                  'answer_json',   ra.answer_json,
+                  'score',         ra.score,
+                  'question_type', q.question_type
                 )
               ) AS answers
        FROM responses r
        LEFT JOIN response_answers ra ON ra.response_id = r.id
+       LEFT JOIN questions q ON q.id = ra.question_id
        WHERE r.survey_id = ?
        GROUP BY r.id
        ORDER BY r.submitted_at DESC`,

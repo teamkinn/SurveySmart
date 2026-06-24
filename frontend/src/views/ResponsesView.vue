@@ -46,7 +46,7 @@
               <td><b>{{ r.respondent_name }}</b></td>
               <td>
                 <div class="rating-stars">
-                  <span v-for="n in 5" :key="n" class="star" :class="{ empty: n > Math.round(parseFloat(r.score) || 0) }">★</span>
+                  <span v-for="n in 5" :key="n" class="star" :class="{ empty: n > Math.round(parseFloat(r.overall_score) || 0) }">★</span>
                 </div>
               </td>
               <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ r.note || '—' }}</td>
@@ -105,7 +105,7 @@ const survey   = computed(() =>
 const isShared = computed(() => !surveyStore.list.find(s => s.id === Number(route.params.id)) && !!surveyStore.shared.find(s => s.id === Number(route.params.id)));
 
 const avgScore = computed(() => {
-  const scores = responses.value.map(r => parseFloat(r.score)).filter(s => !isNaN(s));
+  const scores = responses.value.map(r => parseFloat(r.overall_score)).filter(s => !isNaN(s));
   if (!scores.length) return '—';
   return (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
 });
@@ -139,6 +139,12 @@ function interpText(avg) {
 onMounted(async () => {
   await surveyStore.fetchAll();
   const { data } = await api.get(`/surveys/${route.params.id}/responses`);
-  responses.value = data;
+  responses.value = data.map(r => {
+    let answers = r.answers;
+    if (typeof answers === 'string') { try { answers = JSON.parse(answers); } catch { answers = []; } }
+    answers = Array.isArray(answers) ? answers.filter(a => a && a.question_id) : [];
+    const paraAns = answers.find(a => a.question_type === 'para' && a.answer_text);
+    return { ...r, note: paraAns?.answer_text || null };
+  });
 });
 </script>

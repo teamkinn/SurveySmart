@@ -13,7 +13,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'https://surveysmart-production.up.railway.app',
+        changeOrigin: true,
+      },
+      '/auth': {
+        target: 'https://surveysmart-production.up.railway.app',
         changeOrigin: true,
       },
     },

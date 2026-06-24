@@ -21,7 +21,7 @@ exports.submitFromGoogleForm = async (req, res) => {
       [survey.id]
     );
 
-    // Compute overall_score from star/scale answers
+    // Compute overall_score from star/scale answers or radio with "(n)" pattern
     const scores = [];
     answers.forEach((a, i) => {
       const q = questions[i];
@@ -29,6 +29,9 @@ exports.submitFromGoogleForm = async (req, res) => {
       if (['star', 'scale'].includes(q.question_type)) {
         const s = parseFloat(a.answer_text);
         if (!isNaN(s)) scores.push(s);
+      } else if (q.question_type === 'radio') {
+        const m = (a.answer_text || '').match(/\((\d+(?:\.\d+)?)\)\s*$/);
+        if (m) scores.push(parseFloat(m[1]));
       }
     });
     const overall = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
@@ -54,6 +57,8 @@ exports.submitFromGoogleForm = async (req, res) => {
         const s = parseFloat(a.answer_text);
         if (!isNaN(s)) { score = s; answerJson = JSON.stringify({ score: s }); }
       } else if (['radio', 'dropdown'].includes(q.question_type)) {
+        const m = (a.answer_text || '').match(/\((\d+(?:\.\d+)?)\)\s*$/);
+        if (m) score = parseFloat(m[1]);
         answerJson = JSON.stringify({ value: a.answer_text });
       } else if (q.question_type === 'checkbox') {
         const values = (a.answer_text || '').split(', ').filter(Boolean);
