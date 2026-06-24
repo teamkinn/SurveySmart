@@ -104,21 +104,33 @@
         </div>
       </div>
 
-      <!-- ── Charts Row: Categorical (Donut) + Satisfaction (Bar) ── -->
-      <div v-if="categoricalCharts.length || satisfactionCharts.length" class="charts-2col">
+      <!-- ── Charts Row: Pie Chart (gender) + Avg Score Bar ── -->
+      <div class="charts-2col">
 
-        <!-- Donut charts for categorical questions (e.g. gender) -->
+        <!-- SVG Pie/Donut for categorical (gender) -->
         <div v-for="c in categoricalCharts" :key="c.question_id" class="chart-card">
           <div class="chart-q-text">{{ c.question_text }}</div>
-          <div class="chart-q-meta">{{ c.total }} คำตอบ · การแจกแจงหมวดหมู่</div>
+          <div class="chart-q-meta">{{ c.total }} คำตอบ · การแจกแจง</div>
           <div v-if="!c.total" class="text-empty">ยังไม่มีคำตอบ</div>
           <div v-else class="donut-area">
-            <div class="donut-ring" :style="donutStyle(c.data, c.total)">
-              <div class="donut-hole">
-                <div class="donut-total">{{ c.total }}</div>
-                <div class="donut-sub">คน</div>
-              </div>
-            </div>
+            <svg viewBox="0 0 36 36" class="donut-svg">
+              <!-- background ring -->
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e8edf5" stroke-width="3.8"/>
+              <!-- segments -->
+              <circle
+                v-for="seg in donutSegments(c.data, c.total)"
+                :key="seg.label"
+                cx="18" cy="18" r="15.9"
+                fill="none"
+                :stroke="seg.color"
+                stroke-width="3.8"
+                :stroke-dasharray="`${seg.pct} ${100 - seg.pct}`"
+                :stroke-dashoffset="seg.offset"
+              />
+              <!-- center label -->
+              <text x="18" y="16.5" text-anchor="middle" class="svg-num">{{ c.total }}</text>
+              <text x="18" y="21.5" text-anchor="middle" class="svg-sub">คน</text>
+            </svg>
             <div class="donut-legend">
               <div v-for="(item, i) in c.data.filter(d => d.count > 0)" :key="item.label" class="legend-item">
                 <span class="legend-dot" :style="{ background: donutColors[i % donutColors.length] }"></span>
@@ -129,23 +141,39 @@
           </div>
         </div>
 
-        <!-- Bar charts for satisfaction/score questions -->
-        <div v-for="c in satisfactionCharts" :key="c.question_id" class="chart-card">
-          <div class="chart-q-text">{{ c.question_text }}</div>
-          <div class="chart-q-meta">{{ c.total }} คำตอบ · ระดับความพึงพอใจ</div>
-          <div v-if="!c.total" class="text-empty">ยังไม่มีคำตอบ</div>
-          <div v-else class="bar-chart">
-            <div v-for="item in c.data" :key="item.label" class="bar-row">
-              <div class="bar-label">{{ item.label }}</div>
-              <div class="bar-track">
-                <div class="bar-fill" :style="{ width: c.total ? (item.count / c.total * 100) + '%' : '0%', background: satisfactionColor(item.label) }"></div>
-              </div>
-              <div class="bar-count">{{ item.count }}</div>
-              <div class="bar-pct">{{ c.total ? Math.round(item.count / c.total * 100) : 0 }}%</div>
+        <!-- Average Score Bar Card -->
+        <div class="chart-card">
+          <div class="chart-q-text">ค่าเฉลี่ยความพึงพอใจ</div>
+          <div class="chart-q-meta">{{ filteredResponses.length }} ผู้ตอบ</div>
+          <div v-if="avgScore === '—'" class="text-empty">ยังไม่มีข้อมูล</div>
+          <template v-else>
+            <div class="score-display">
+              <span class="score-big" :class="scoreColorClass">{{ avgScore }}</span>
+              <span class="score-max">/ 5.00</span>
             </div>
-          </div>
+            <!-- Bar -->
+            <div class="score-bar-wrap">
+              <div class="score-bar-track">
+                <div class="score-bar-fill" :class="scoreColorClass + '-bg'"
+                     :style="{ width: (parseFloat(avgScore) / 5 * 100) + '%' }"></div>
+              </div>
+              <div class="score-bar-ticks">
+                <span v-for="n in 5" :key="n">{{ n }}</span>
+              </div>
+            </div>
+            <!-- Per-score breakdown bars -->
+            <div class="score-breakdown" v-if="scoreBreakdown.length">
+              <div v-for="item in scoreBreakdown" :key="item.label" class="breakdown-row">
+                <span class="breakdown-label">{{ item.label }}</span>
+                <div class="breakdown-track">
+                  <div class="breakdown-fill" :style="{ width: item.pct + '%', background: satisfactionColor(item.label) }"></div>
+                </div>
+                <span class="breakdown-count">{{ item.count }}</span>
+              </div>
+            </div>
+            <span class="interp-badge" :class="interpClass(parseFloat(avgScore))" style="margin-top:14px;display:inline-block;">{{ interpText(parseFloat(avgScore)) }}</span>
+          </template>
         </div>
-
       </div>
 
       <!-- ── Raw Data: Respondents Table + Comments Feed ── -->
@@ -200,41 +228,49 @@ const responses   = ref([]);
 const charts      = ref([]);
 const activeTab   = ref('list');
 
-// Filters
 const filterFrom   = ref('');
 const filterTo     = ref('');
 const filterGender = ref('');
 
 const donutColors = ['#1a56a0', '#f59e0b', '#64748b', '#22c55e', '#ef4444', '#8b5cf6'];
 
-const survey   = computed(() =>
+const survey = computed(() =>
   surveyStore.list.find(s => s.id === Number(route.params.id)) ||
-  surveyStore.shared.find(s => s.id === Number(route.params.id)) ||
-  null
+  surveyStore.shared.find(s => s.id === Number(route.params.id)) || null
 );
 const isShared = computed(() =>
   !surveyStore.list.find(s => s.id === Number(route.params.id)) &&
   !!surveyStore.shared.find(s => s.id === Number(route.params.id))
 );
 
-// ── Chart categorisation ──
 const isScoreLabel = label => /\(\d+(?:\.\d+)?\)\s*$/.test(label);
 
+// Only categorical radio charts (no score pattern in labels) → donut
 const categoricalCharts = computed(() =>
   charts.value.filter(c => c.chartType === 'bar' && !c.data.some(d => isScoreLabel(d.label)))
 );
-const satisfactionCharts = computed(() =>
-  charts.value.filter(c => c.chartType === 'bar' && c.data.some(d => isScoreLabel(d.label)))
+
+// Satisfaction charts (score pattern in labels) → used for scoreBreakdown
+const satisfactionChart = computed(() =>
+  charts.value.find(c => c.chartType === 'bar' && c.data.some(d => isScoreLabel(d.label))) || null
 );
 
-// Gender options derived from the first categorical chart
+const scoreBreakdown = computed(() => {
+  const c = satisfactionChart.value;
+  if (!c || !c.total) return [];
+  return c.data.filter(d => d.count > 0).map(d => ({
+    label: d.label,
+    count: d.count,
+    pct: Math.round(d.count / c.total * 100),
+  }));
+});
+
 const genderOptions = computed(() => {
   const cat = categoricalCharts.value[0];
   if (!cat) return [];
   return cat.data.filter(d => d.count > 0).map(d => d.label);
 });
 
-// ── Filtered responses ──
 const filteredResponses = computed(() =>
   responses.value.filter(r => {
     if (filterFrom.value && r.submitted_at < filterFrom.value) return false;
@@ -265,25 +301,20 @@ const scoreColorClass = computed(() => {
 });
 
 const comments = computed(() => filteredResponses.value.filter(r => r.note));
+const lastDate  = computed(() => responses.value.length ? formatDate(responses.value[0].submitted_at) : '—');
 
-const lastDate = computed(() =>
-  responses.value.length ? formatDate(responses.value[0].submitted_at) : '—'
-);
-
-// ── Donut style ──
-function donutStyle(data, total) {
-  if (!total) return {};
-  let offset = 0;
-  const stops = data.map((d, i) => {
-    const pct = (d.count / total) * 100;
-    const s = `${donutColors[i % donutColors.length]} ${offset}% ${offset + pct}%`;
-    offset += pct;
-    return s;
-  });
-  return { background: `conic-gradient(${stops.join(', ')})` };
+// SVG donut segments (circumference = 100 at r=15.9)
+function donutSegments(data, total) {
+  if (!total) return [];
+  let cumulative = 0;
+  return data.map((d, i) => {
+    const pct    = (d.count / total) * 100;
+    const offset = 25 - cumulative; // 25 = shift start to 12 o'clock
+    cumulative  += pct;
+    return { pct, offset, color: donutColors[i % donutColors.length], label: d.label };
+  }).filter(s => s.pct > 0);
 }
 
-// ── Satisfaction bar color ──
 function satisfactionColor(label) {
   if (/ดีมาก|\(5\)/.test(label)) return '#22c55e';
   if (/\bดี\b|\(4\)/.test(label)) return '#3b82f6';
@@ -292,13 +323,12 @@ function satisfactionColor(label) {
   return '#ef4444';
 }
 
-// ── Export CSV ──
 function exportCSV() {
   const rows = [['#', 'ชื่อ-นามสกุล', 'คะแนน', 'วันที่', 'ความคิดเห็น']];
   filteredResponses.value.forEach((r, i) => {
     rows.push([i + 1, r.respondent_name || '', r.overall_score != null ? parseFloat(r.overall_score).toFixed(1) : '', formatDate(r.submitted_at), r.note || '']);
   });
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
@@ -312,7 +342,6 @@ function formatDate(d) {
 }
 function badgeClass(s) { return { 'badge-active': s === 'active', 'badge-draft': s === 'draft', 'badge-closed': s === 'closed' }; }
 function badgeText(s)  { return s === 'active' ? '🟢 Active' : s === 'draft' ? '✏️ Draft' : '⬜ Closed'; }
-
 function interpClass(avg) {
   if (avg >= 4.5) return 'interp-5';
   if (avg >= 3.5) return 'interp-4';
@@ -362,39 +391,14 @@ onMounted(async () => {
 .filter-group { display: flex; flex-direction: column; gap: 3px; }
 .filter-label { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .4px; }
 .filter-input { border: 1px solid var(--line); border-radius: var(--r2); padding: 5px 8px; font-size: 12px; font-family: 'Sarabun', sans-serif; color: var(--text); background: var(--slate); }
-.export-btn {
-  background: var(--navy);
-  color: #fff;
-  border: none;
-  border-radius: var(--r2);
-  padding: 7px 14px;
-  font-size: 12px;
-  font-family: 'Sarabun', sans-serif;
-  font-weight: 700;
-  cursor: pointer;
-  transition: opacity .15s;
-}
+.export-btn { background: var(--navy); color: #fff; border: none; border-radius: var(--r2); padding: 7px 14px; font-size: 12px; font-family: 'Sarabun', sans-serif; font-weight: 700; cursor: pointer; transition: opacity .15s; }
 .export-btn:hover { opacity: .85; }
 
 /* ── KPI Row ── */
-.kpi-row {
-  display: grid;
-  grid-template-columns: 1fr 2fr;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-.kpi-mini-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  background: var(--white);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 16px 20px;
-  box-shadow: var(--sh);
-}
-.kpi-mini-icon { font-size: 28px; flex-shrink: 0; }
-.kpi-mini-val  { font-size: 32px; font-weight: 800; color: var(--navy); line-height: 1.1; }
+.kpi-row { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; margin-bottom: 14px; }
+.kpi-mini-card { display: flex; align-items: center; gap: 14px; background: var(--white); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 20px; box-shadow: var(--sh); }
+.kpi-mini-icon  { font-size: 28px; flex-shrink: 0; }
+.kpi-mini-val   { font-size: 32px; font-weight: 800; color: var(--navy); line-height: 1.1; }
 .kpi-mini-denom { font-size: 14px; font-weight: 400; color: var(--text3); }
 .kpi-mini-label { font-size: 12px; color: var(--text3); margin-top: 2px; }
 
@@ -406,51 +410,44 @@ onMounted(async () => {
 .score-bad       { color: #ef4444 !important; }
 
 /* ── Charts 2-column ── */
-.charts-2col {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
-  margin-bottom: 14px;
-}
+.charts-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
 
-/* ── Donut ── */
-.donut-area { display: flex; align-items: center; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
-.donut-ring {
-  width: 130px;
-  height: 130px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  position: relative;
-}
-.donut-hole {
-  position: absolute;
-  inset: 22%;
-  background: var(--white);
-  border-radius: 50%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-.donut-total { font-size: 20px; font-weight: 800; color: var(--navy); }
-.donut-sub   { font-size: 10px; color: var(--text3); }
-.donut-legend { display: flex; flex-direction: column; gap: 7px; flex: 1; min-width: 120px; }
-.legend-item  { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.legend-dot   { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.legend-label { flex: 1; color: var(--text); }
-.legend-count { color: var(--text3); font-size: 11px; white-space: nowrap; }
+/* ── SVG Donut ── */
+.donut-area { display: flex; align-items: center; gap: 20px; margin-top: 14px; flex-wrap: wrap; }
+.donut-svg  { width: 140px; height: 140px; flex-shrink: 0; transform: rotate(-90deg); }
+.svg-num    { font-size: 7px; font-weight: 700; fill: var(--navy); transform: rotate(90deg); transform-origin: 18px 16.5px; }
+.svg-sub    { font-size: 3.5px; fill: var(--text3); transform: rotate(90deg); transform-origin: 18px 21.5px; }
+.donut-legend  { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 100px; }
+.legend-item   { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.legend-dot    { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.legend-label  { flex: 1; color: var(--text); }
+.legend-count  { color: var(--text3); font-size: 11px; white-space: nowrap; }
 
-/* ── Satisfaction bar ── */
+/* ── Avg Score Bar ── */
 .chart-q-text { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 3px; line-height: 1.4; }
-.chart-q-meta { font-size: 10px; color: var(--text3); margin-bottom: 12px; }
-.bar-chart { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-.bar-row   { display: flex; align-items: center; gap: 8px; }
-.bar-label { width: 140px; font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; text-align: right; }
-.bar-track { flex: 1; height: 20px; background: var(--slate2); border-radius: 10px; overflow: hidden; }
-.bar-fill  { height: 100%; border-radius: 10px; transition: width .4s ease; min-width: 3px; }
-.bar-count { width: 24px; font-size: 11px; color: var(--text2); text-align: right; flex-shrink: 0; }
-.bar-pct   { width: 36px; font-size: 10px; color: var(--text3); flex-shrink: 0; }
-.text-empty  { font-size: 12px; color: var(--text3); font-style: italic; margin-top: 10px; }
+.chart-q-meta { font-size: 10px; color: var(--text3); margin-bottom: 8px; }
+.score-display { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 6px; }
+.score-big  { font-size: 38px; font-weight: 800; }
+.score-max  { font-size: 14px; color: var(--text3); }
+.score-bar-wrap  { margin: 4px 0 6px; }
+.score-bar-track { height: 18px; background: var(--slate2); border-radius: 99px; overflow: hidden; }
+.score-bar-fill  { height: 100%; border-radius: 99px; transition: width .6s ease; }
+.score-excellent-bg { background: #22c55e; }
+.score-good-bg      { background: #3b82f6; }
+.score-mid-bg       { background: #f59e0b; }
+.score-low-bg       { background: #f97316; }
+.score-bad-bg       { background: #ef4444; }
+.score-bar-ticks { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; color: var(--text3); padding: 0 2px; }
+
+/* Breakdown bars inside score card */
+.score-breakdown { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; }
+.breakdown-row   { display: flex; align-items: center; gap: 7px; }
+.breakdown-label { width: 110px; font-size: 10px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; text-align: right; }
+.breakdown-track { flex: 1; height: 12px; background: var(--slate2); border-radius: 6px; overflow: hidden; }
+.breakdown-fill  { height: 100%; border-radius: 6px; transition: width .4s ease; }
+.breakdown-count { width: 20px; font-size: 10px; color: var(--text3); text-align: right; flex-shrink: 0; }
+
+.text-empty { font-size: 12px; color: var(--text3); font-style: italic; margin-top: 10px; }
 
 /* ── Bottom grid ── */
 .bottom-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; align-items: start; }
