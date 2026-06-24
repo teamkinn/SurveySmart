@@ -46,17 +46,23 @@
           <div class="field"><label>ไอดีผู้ใช้</label><input v-model="reg.username" type="text" placeholder="somchai99" required></div>
           <div class="field"><label>อีเมล</label><input v-model="reg.email" type="email" placeholder="email@example.com" required></div>
           <div class="field"><label>รหัสผ่าน</label><input v-model="reg.password" type="password" placeholder="อย่างน้อย 8 ตัว" minlength="8" required></div>
+          <div class="field"><label>ยืนยันรหัสผ่าน</label><input v-model="reg.confirm_password" type="password" placeholder="กรอกรหัสผ่านอีกครั้ง" required></div>
           <p v-if="error" style="color:var(--red);font-size:12px;">{{ error }}</p>
           <button type="submit" class="btn-primary" :disabled="busy">{{ busy ? 'กำลังสร้างบัญชี...' : 'สร้างบัญชี' }}</button>
           <p class="auth-footer-link">มีบัญชีแล้ว? <a @click="tab = 'login'">เข้าสู่ระบบ</a></p>
         </form>
 
         <!-- Forgot -->
-        <form v-else style="display:flex;flex-direction:column;gap:13px;" @submit.prevent="() => { tab='login'; }">
+        <form v-else style="display:flex;flex-direction:column;gap:13px;" @submit.prevent="doForgot">
           <button type="button" class="back-link" @click="tab = 'login'">← กลับ</button>
-          <p style="font-size:13px;color:var(--text3);">กรอกอีเมลเพื่อรับลิงก์รีเซต</p>
-          <div class="field"><label>อีเมล</label><input type="email" placeholder="email@example.com"></div>
-          <button type="submit" class="btn-primary">ส่งลิงก์รีเซต</button>
+          <p style="font-size:13px;color:var(--text3);">กรอกอีเมลเพื่อรับลิงก์รีเซตรหัสผ่าน</p>
+          <div class="field"><label>อีเมล</label><input v-model="forgotEmail" type="email" placeholder="email@example.com" required></div>
+          <p v-if="error"        style="color:var(--red);font-size:12px;">{{ error }}</p>
+          <p v-if="forgotMsg"    style="color:#22c55e;font-size:12px;">{{ forgotMsg }}</p>
+          <div v-if="forgotLink" style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px;font-size:11px;word-break:break-all;">
+            <b>ลิงก์รีเซต (คัดลอกไปวางในเบราว์เซอร์):</b><br>{{ forgotLink }}
+          </div>
+          <button type="submit" class="btn-primary" :disabled="busy">{{ busy ? 'กำลังส่ง...' : 'ส่งลิงก์รีเซต' }}</button>
         </form>
       </div>
     </div>
@@ -72,12 +78,15 @@ const router    = useRouter();
 const authStore = useAuthStore();
 const showToast = inject('showToast');
 
-const tab   = ref('login');
-const busy  = ref(false);
-const error = ref('');
+const tab        = ref('login');
+const busy       = ref(false);
+const error      = ref('');
+const forgotEmail = ref('');
+const forgotMsg  = ref('');
+const forgotLink = ref('');
 
 const login = ref({ identifier: '', password: '' });
-const reg   = ref({ first_name: '', last_name: '', username: '', email: '', password: '' });
+const reg   = ref({ first_name: '', last_name: '', username: '', email: '', password: '', confirm_password: '' });
 
 async function doLogin() {
   error.value = '';
@@ -93,8 +102,26 @@ async function doLogin() {
   }
 }
 
+async function doForgot() {
+  error.value = ''; forgotMsg.value = ''; forgotLink.value = '';
+  busy.value = true;
+  try {
+    const { data } = await import('@/api').then(m => m.default.post('/auth/forgot-password', { email: forgotEmail.value }));
+    forgotMsg.value  = data.message;
+    if (data.resetUrl) forgotLink.value = data.resetUrl;
+  } catch (e) {
+    error.value = e.response?.data?.message || 'เกิดข้อผิดพลาด';
+  } finally {
+    busy.value = false;
+  }
+}
+
 async function doRegister() {
   error.value = '';
+  if (reg.value.password !== reg.value.confirm_password) {
+    error.value = 'รหัสผ่านไม่ตรงกัน กรุณากรอกใหม่';
+    return;
+  }
   busy.value  = true;
   try {
     await authStore.register(reg.value);
