@@ -73,6 +73,7 @@
 import { ref, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import api from '@/api';
 
 const router    = useRouter();
 const authStore = useAuthStore();
@@ -106,7 +107,7 @@ async function doForgot() {
   error.value = ''; forgotMsg.value = ''; forgotLink.value = '';
   busy.value = true;
   try {
-    const { data } = await import('@/api').then(m => m.default.post('/auth/forgot-password', { email: forgotEmail.value }));
+    const { data } = await api.post('/auth/forgot-password', { email: forgotEmail.value });
     forgotMsg.value  = data.message;
     if (data.resetUrl) forgotLink.value = data.resetUrl;
   } catch (e) {

@@ -1,5 +1,4 @@
 const db = require('../config/db');
-const { randomBytes } = require('crypto');
 
 exports.list = async (req, res) => {
   try {

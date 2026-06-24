@@ -135,7 +135,7 @@ exports.resetPassword = async (req, res) => {
 exports.me = async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT id, username, email, first_name, last_name, created_at FROM users WHERE id = ?',
+      'SELECT id, username, email, first_name, last_name, role, created_at FROM users WHERE id = ?',
       [req.user.id]
     );
     if (!rows.length) return res.status(404).json({ message: 'ไม่พบผู้ใช้' });
