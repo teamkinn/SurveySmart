@@ -14,6 +14,7 @@ const routes = [
       { path: 'dashboard',name: 'Dashboard', component: () => import('@/views/DashboardView.vue') },
       { path: 'shared',   name: 'Shared',    component: () => import('@/views/SharedView.vue') },
       { path: 'surveys/:id/responses', name: 'Responses', component: () => import('@/views/ResponsesView.vue') },
+      { path: 'admin', name: 'Admin', component: () => import('@/views/AdminView.vue'), meta: { adminOnly: true } },
     ],
   },
   { path: '/:catchAll(.*)', redirect: '/' },
@@ -28,6 +29,7 @@ router.beforeEach((to, _, next) => {
   const auth = useAuthStore();
   if (to.meta.requiresAuth && !auth.token) return next('/login');
   if (to.meta.guest && auth.token) return next('/');
+  if (to.meta.adminOnly && auth.user?.role !== 'admin') return next('/');
   next();
 });
 

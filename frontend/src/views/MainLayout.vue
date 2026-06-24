@@ -12,6 +12,7 @@
         <div class="user-chip">
           <div class="chip-avatar">{{ initials }}</div>
           <div class="chip-name">{{ fullName }}</div>
+          <span v-if="isAdmin" style="background:#ef4444;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:99px;letter-spacing:.5px;">ADMIN</span>
         </div>
         <button class="top-header-btn" @click="doLogout">ออกจากระบบ</button>
       </div>
@@ -42,7 +43,7 @@
 </template>
 
 <script setup>
-import { ref, computed, inject } from 'vue';
+import { ref, computed, inject, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useSurveyStore } from '@/stores/surveys';
@@ -55,12 +56,15 @@ const showToast   = inject('showToast');
 
 const builderRef = ref(null);
 
-const navItems = [
+const isAdmin = computed(() => authStore.user?.role === 'admin');
+
+const navItems = computed(() => [
   { to: '/',          icon: '🏠', label: 'หน้าหลัก' },
   { to: '/surveys',   icon: '📋', label: 'แบบสอบถามของฉัน' },
   { to: '/dashboard', icon: '📊', label: 'Dashboard' },
   { to: '/shared',    icon: '👁️', label: 'แชร์ให้ฉันดู' },
-];
+  ...(isAdmin.value ? [{ to: '/admin', icon: '⚙️', label: 'Admin' }] : []),
+]);
 
 const initials = computed(() => {
   const u = authStore.user;

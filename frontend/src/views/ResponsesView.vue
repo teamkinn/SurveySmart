@@ -226,10 +226,13 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useSurveyStore } from '@/stores/surveys';
+import { useAuthStore }   from '@/stores/auth';
 import api from '@/api';
 
 const route       = useRoute();
 const surveyStore = useSurveyStore();
+const authStore   = useAuthStore();
+const isAdminUser = computed(() => authStore.user?.role === 'admin');
 const responses   = ref([]);
 const charts      = ref([]);
 const activeTab   = ref('list');
@@ -246,7 +249,7 @@ const survey = computed(() =>
   surveyStore.others.find(s => s.id === Number(route.params.id)) || null
 );
 const isShared = computed(() =>
-  !surveyStore.list.find(s => s.id === Number(route.params.id))
+  !isAdminUser.value && !surveyStore.list.find(s => s.id === Number(route.params.id))
 );
 
 const isScoreLabel = label => /\(\d+(?:\.\d+)?\)\s*$/.test(label);

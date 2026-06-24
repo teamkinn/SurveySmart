@@ -16,7 +16,7 @@ function makeTransport() {
 
 const signToken = (user) =>
   jwt.sign(
-    { id: user.id, username: user.username, email: user.email },
+    { id: user.id, username: user.username, email: user.email, role: user.role || 'user' },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
@@ -41,7 +41,7 @@ exports.register = async (req, res) => {
       'INSERT INTO users (username, email, password, first_name, last_name) VALUES (?,?,?,?,?)',
       [username, email, hash, first_name || '', last_name || '']
     );
-    const user = { id: result.insertId, username, email };
+    const user = { id: result.insertId, username, email, role: 'user' };
     res.status(201).json({ token: signToken(user), user });
   } catch (err) {
     res.status(500).json({ message: 'เกิดข้อผิดพลาด', error: err.message });

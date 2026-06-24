@@ -17,9 +17,10 @@ exports.list = async (req, res) => {
 
 exports.get = async (req, res) => {
   try {
+    const isAdmin = req.user.role === 'admin';
     const [surveys] = await db.query(
-      'SELECT * FROM surveys WHERE id = ? AND user_id = ?',
-      [req.params.id, req.user.id]
+      isAdmin ? 'SELECT * FROM surveys WHERE id = ?' : 'SELECT * FROM surveys WHERE id = ? AND user_id = ?',
+      isAdmin ? [req.params.id] : [req.params.id, req.user.id]
     );
     if (!surveys.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
@@ -71,9 +72,10 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { title, description, status, close_date, target_responses, questions } = req.body;
+    const isAdmin = req.user.role === 'admin';
     const [chk] = await db.query(
-      'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
-      [req.params.id, req.user.id]
+      isAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
+      isAdmin ? [req.params.id] : [req.params.id, req.user.id]
     );
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
@@ -110,9 +112,10 @@ exports.update = async (req, res) => {
 
 exports.remove = async (req, res) => {
   try {
+    const isAdmin = req.user.role === 'admin';
     const [chk] = await db.query(
-      'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
-      [req.params.id, req.user.id]
+      isAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
+      isAdmin ? [req.params.id] : [req.params.id, req.user.id]
     );
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
     await db.query('DELETE FROM surveys WHERE id = ?', [req.params.id]);
@@ -124,9 +127,10 @@ exports.remove = async (req, res) => {
 
 exports.publish = async (req, res) => {
   try {
+    const isAdmin = req.user.role === 'admin';
     const [chk] = await db.query(
-      'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
-      [req.params.id, req.user.id]
+      isAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
+      isAdmin ? [req.params.id] : [req.params.id, req.user.id]
     );
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
     await db.query("UPDATE surveys SET status='active' WHERE id = ?", [req.params.id]);

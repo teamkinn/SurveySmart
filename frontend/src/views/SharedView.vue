@@ -7,8 +7,11 @@
       </div>
     </div>
 
-    <div style="background:rgba(26,86,160,.06);border:1px solid rgba(26,86,160,.18);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--royal);">
+    <div v-if="!isAdmin" style="background:rgba(26,86,160,.06);border:1px solid rgba(26,86,160,.18);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--royal);">
       👁️ สิทธิ์ <b>View Only</b> — ดูผลได้ ไม่สามารถแก้ไขหรือลบได้
+    </div>
+    <div v-else style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:12px;color:#dc2626;">
+      ⚙️ โหมด <b>Admin</b> — มีสิทธิ์เต็มกับทุกแบบสอบถาม
     </div>
 
     <div class="filter-bar">
@@ -51,8 +54,12 @@
             <td><span style="font-weight:700;">{{ s.response_count || 0 }}</span></td>
             <td>{{ s.avg_score ? parseFloat(s.avg_score).toFixed(1) : '—' }}</td>
             <td style="color:var(--text3);font-size:11px;">{{ formatDate(s.created_at) }}</td>
-            <td>
+            <td class="actions-cell">
               <button class="btn-sm btn-blue" @click="$router.push(`/surveys/${s.id}/responses`)">📊 ดูผล</button>
+              <template v-if="isAdmin">
+                <button v-if="s.status === 'draft'" class="btn-sm btn-outline" @click="adminPublish(s.id)">🚀 เผยแพร่</button>
+                <button class="btn-sm btn-red" @click="adminRemove(s.id)">🗑</button>
+              </template>
             </td>
           </tr>
         </tbody>
@@ -62,12 +69,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, inject } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
+import { useAuthStore }   from '@/stores/auth';
 
 const surveyStore  = useSurveyStore();
+const authStore    = useAuthStore();
+const showToast    = inject('showToast');
 const search       = ref('');
 const statusFilter = ref('');
+const isAdmin      = computed(() => authStore.user?.role === 'admin');
 
 const filtered = computed(() =>
   surveyStore.others.filter(s => {
@@ -86,6 +97,18 @@ function badgeText(status) {
 }
 function formatDate(d) {
   return d ? new Date(d).toLocaleDateString('th-TH') : '—';
+}
+
+async function adminPublish(id) {
+  await surveyStore.publish(id);
+  showToast('เผยแพร่แบบสอบถามเรียบร้อยแล้ว 🚀');
+}
+
+async function adminRemove(id) {
+  if (!confirm('ต้องการลบแบบสอบถามนี้หรือไม่?')) return;
+  await surveyStore.remove(id);
+  await surveyStore.fetchAll();
+  showToast('ลบแบบสอบถามแล้ว');
 }
 
 onMounted(() => surveyStore.fetchAll());

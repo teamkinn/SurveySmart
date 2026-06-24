@@ -8,6 +8,7 @@ app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
 app.use(express.json());
 
 app.use('/api/auth',          require('./routes/auth'));
+app.use('/api/admin',         require('./routes/admin'));
 app.use('/api/responses/public', require('./routes/publicResponses'));
 app.use('/api/surveys/:surveyId/responses', require('./routes/responses'));
 app.use('/api/surveys',       require('./routes/surveys'));
