@@ -105,9 +105,16 @@ exports.chartData = async (req, res) => {
       [surveyId]
     );
 
+    // mysql2 returns JSON columns as already-parsed objects; handle both object and string
+    const parseJson = v => {
+      if (!v) return null;
+      if (typeof v !== 'string') return v;
+      try { return JSON.parse(v); } catch { return null; }
+    };
+
     const charts = questions.map(q => {
       const qAnswers = answers.filter(a => a.question_id === q.id);
-      const opts = (() => { try { return JSON.parse(q.options_json) || []; } catch { return []; } })();
+      const opts = parseJson(q.options_json) || [];
 
       let chartType = 'none';
       let data = [];
@@ -118,8 +125,7 @@ exports.chartData = async (req, res) => {
         const counts = {};
         labels.forEach(l => counts[l] = 0);
         qAnswers.forEach(a => {
-          let parsed = null;
-          try { parsed = JSON.parse(a.answer_json); } catch {}
+          const parsed = parseJson(a.answer_json);
           if (parsed?.value) counts[parsed.value] = (counts[parsed.value] || 0) + 1;
           if (parsed?.values) parsed.values.forEach(v => { counts[v] = (counts[v] || 0) + 1; });
         });
@@ -130,8 +136,7 @@ exports.chartData = async (req, res) => {
         const counts = {};
         for (let i = min; i <= max; i++) counts[i] = 0;
         qAnswers.forEach(a => {
-          let parsed = null;
-          try { parsed = JSON.parse(a.answer_json); } catch {}
+          const parsed = parseJson(a.answer_json);
           const v = parsed?.score ?? a.score;
           if (v !== null && v !== undefined) counts[Math.round(v)] = (counts[Math.round(v)] || 0) + 1;
         });

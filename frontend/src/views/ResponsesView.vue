@@ -132,10 +132,15 @@
               <text x="18" y="21.5" text-anchor="middle" class="svg-sub">คน</text>
             </svg>
             <div class="donut-legend">
-              <div v-for="(item, i) in c.data.filter(d => d.count > 0)" :key="item.label" class="legend-item">
-                <span class="legend-dot" :style="{ background: donutColors[i % donutColors.length] }"></span>
+              <div v-for="(item, i) in c.data" :key="item.label"
+                   class="legend-item" :class="{ 'legend-item-zero': item.count === 0 }">
+                <span class="legend-dot"
+                      :style="{ background: item.count > 0 ? donutColors[i % donutColors.length] : '#dde3ee' }"></span>
                 <span class="legend-label">{{ item.label }}</span>
-                <span class="legend-count">{{ item.count }} ({{ Math.round(item.count / c.total * 100) }}%)</span>
+                <span class="legend-count">
+                  {{ item.count }}
+                  <span v-if="item.count > 0" class="legend-pct">({{ Math.round(item.count / c.total * 100) }}%)</span>
+                </span>
               </div>
             </div>
           </div>
@@ -232,7 +237,7 @@ const filterFrom   = ref('');
 const filterTo     = ref('');
 const filterGender = ref('');
 
-const donutColors = ['#1a56a0', '#f59e0b', '#64748b', '#22c55e', '#ef4444', '#8b5cf6'];
+const donutColors = ['#1a56a0', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#f97316'];
 
 const survey = computed(() =>
   surveyStore.list.find(s => s.id === Number(route.params.id)) ||
@@ -422,6 +427,9 @@ onMounted(async () => {
 .legend-dot    { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .legend-label  { flex: 1; color: var(--text); }
 .legend-count  { color: var(--text3); font-size: 11px; white-space: nowrap; }
+.legend-pct    { font-size: 10px; opacity: .75; }
+.legend-item-zero .legend-label { color: var(--text3); }
+.legend-item-zero .legend-count { opacity: .5; }
 
 /* ── Avg Score Bar ── */
 .chart-q-text { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 3px; line-height: 1.4; }
