@@ -9,6 +9,7 @@ router.use(auth);
 
 router.get('/stats',          ctrl.stats);
 router.get('/shared',         ctrl.listShared);
+router.get('/others',         ctrl.listOthers);
 router.get('/',               ctrl.list);
 router.get('/:id',            ctrl.get);
 router.post('/',              ctrl.create);

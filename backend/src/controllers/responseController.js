@@ -5,12 +5,9 @@ exports.list = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
 
-    // Verify ownership or shared access
-    const [access] = await db.query(
-      `SELECT id FROM surveys WHERE id = ? AND (user_id = ? OR id IN (SELECT survey_id FROM survey_shares WHERE shared_with_id = ?))`,
-      [surveyId, req.user.id, req.user.id]
-    );
-    if (!access.length) return res.status(403).json({ message: 'ไม่มีสิทธิ์เข้าถึง' });
+    // Any authenticated user can view responses (read-only)
+    const [access] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
+    if (!access.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
     const [rows] = await db.query(
       `SELECT r.*,
@@ -84,11 +81,9 @@ exports.submit = async (req, res) => {
 exports.chartData = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
-    const [access] = await db.query(
-      `SELECT id FROM surveys WHERE id = ? AND (user_id = ? OR id IN (SELECT survey_id FROM survey_shares WHERE shared_with_id = ?))`,
-      [surveyId, req.user.id, req.user.id]
-    );
-    if (!access.length) return res.status(403).json({ message: 'ไม่มีสิทธิ์เข้าถึง' });
+    // Any authenticated user can view chart data (read-only)
+    const [access] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
+    if (!access.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
     // Get all questions for this survey
     const [questions] = await db.query(

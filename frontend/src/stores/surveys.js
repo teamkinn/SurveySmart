@@ -5,6 +5,7 @@ export const useSurveyStore = defineStore('surveys', {
   state: () => ({
     list:   [],
     shared: [],
+    others: [],
     stats:  {},
     loading: false,
   }),
@@ -12,13 +13,15 @@ export const useSurveyStore = defineStore('surveys', {
     async fetchAll() {
       this.loading = true;
       try {
-        const [s, sh, st] = await Promise.all([
+        const [s, sh, ot, st] = await Promise.all([
           api.get('/surveys'),
           api.get('/surveys/shared'),
+          api.get('/surveys/others'),
           api.get('/surveys/stats'),
         ]);
         this.list   = s.data;
         this.shared = sh.data;
+        this.others = ot.data;
         this.stats  = st.data;
       } finally {
         this.loading = false;

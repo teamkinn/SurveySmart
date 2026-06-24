@@ -185,12 +185,12 @@
       <!-- ── Raw Data: Respondents Table + Comments Feed ── -->
       <div class="bottom-grid">
         <div class="chart-card">
-          <h3>👥 ข้อมูลผู้ตอบ</h3>
+          <h3>👥 ข้อมูลผู้ตอบล่าสุด</h3>
           <div v-if="!filteredResponses.length" style="color:var(--text3);font-size:13px;margin-top:8px;">ยังไม่มีคำตอบ</div>
           <table v-else class="stat-table">
             <thead><tr><th>#</th><th>ชื่อ</th><th>คะแนน</th><th>วันที่</th></tr></thead>
             <tbody>
-              <tr v-for="(r, i) in filteredResponses" :key="r.id">
+              <tr v-for="(r, i) in filteredResponses.slice(0, 5)" :key="r.id">
                 <td>{{ i + 1 }}</td>
                 <td><b>{{ r.respondent_name }}</b></td>
                 <td>
@@ -206,10 +206,10 @@
           </table>
         </div>
         <div class="chart-card">
-          <h3>💬 ความคิดเห็น</h3>
+          <h3>💬 ความคิดเห็นล่าสุด</h3>
           <div v-if="!comments.length" style="color:var(--text3);font-size:13px;margin-top:8px;">ยังไม่มีความคิดเห็น</div>
           <div v-else style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
-            <div v-for="c in comments" :key="c.id" class="comment-bubble">
+            <div v-for="c in comments.slice(0, 5)" :key="c.id" class="comment-bubble">
               <div class="cb-name">{{ c.respondent_name }}</div>
               <div class="cb-text">{{ c.note }}</div>
               <div class="cb-date">{{ formatDate(c.submitted_at) }}</div>
@@ -242,11 +242,11 @@ const donutColors = ['#1a56a0', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#f9
 
 const survey = computed(() =>
   surveyStore.list.find(s => s.id === Number(route.params.id)) ||
-  surveyStore.shared.find(s => s.id === Number(route.params.id)) || null
+  surveyStore.shared.find(s => s.id === Number(route.params.id)) ||
+  surveyStore.others.find(s => s.id === Number(route.params.id)) || null
 );
 const isShared = computed(() =>
-  !surveyStore.list.find(s => s.id === Number(route.params.id)) &&
-  !!surveyStore.shared.find(s => s.id === Number(route.params.id))
+  !surveyStore.list.find(s => s.id === Number(route.params.id))
 );
 
 const isScoreLabel = label => /\(\d+(?:\.\d+)?\)\s*$/.test(label);

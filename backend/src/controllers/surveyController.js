@@ -138,6 +138,22 @@ exports.publish = async (req, res) => {
   }
 };
 
+exports.listOthers = async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT vs.*, u.first_name, u.last_name, u.username AS owner_username
+       FROM v_survey_summary vs
+       JOIN users u ON u.id = vs.user_id
+       WHERE vs.user_id != ?
+       ORDER BY vs.created_at DESC`,
+      [req.user.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.listShared = async (req, res) => {
   try {
     const [rows] = await db.query(
