@@ -124,6 +124,7 @@
                 fill="none"
                 :stroke="seg.color"
                 stroke-width="3.8"
+                pathLength="100"
                 :stroke-dasharray="`${seg.pct} ${100 - seg.pct}`"
                 :stroke-dashoffset="seg.offset"
               />

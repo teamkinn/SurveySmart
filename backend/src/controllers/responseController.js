@@ -126,8 +126,12 @@ exports.chartData = async (req, res) => {
         labels.forEach(l => counts[l] = 0);
         qAnswers.forEach(a => {
           const parsed = parseJson(a.answer_json);
-          if (parsed?.value) counts[parsed.value] = (counts[parsed.value] || 0) + 1;
-          if (parsed?.values) parsed.values.forEach(v => { counts[v] = (counts[v] || 0) + 1; });
+          if (parsed?.values) {
+            parsed.values.forEach(v => { counts[v] = (counts[v] || 0) + 1; });
+          } else {
+            const value = parsed?.value ?? a.answer_text;
+            if (value) counts[value] = (counts[value] || 0) + 1;
+          }
         });
         data = labels.map(l => ({ label: l, count: counts[l] || 0 }));
       } else if (['scale', 'star'].includes(q.question_type)) {
