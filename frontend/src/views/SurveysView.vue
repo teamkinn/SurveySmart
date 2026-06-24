@@ -75,46 +75,6 @@
       </table>
     </div>
 
-    <!-- ── Other users' surveys (read-only) ── -->
-    <div v-if="surveyStore.others.length" style="margin-top:28px;">
-      <div style="font-size:15px;font-weight:800;color:var(--navy);margin-bottom:8px;">👁️ แบบสอบถามของผู้ใช้อื่น</div>
-      <div class="survey-table-wrap">
-        <table class="survey-table">
-          <thead>
-            <tr>
-              <th>ชื่อแบบสอบถาม</th>
-              <th>เจ้าของ</th>
-              <th>สถานะ</th>
-              <th>ผู้ตอบ</th>
-              <th>คะแนนเฉลี่ย</th>
-              <th>วันที่สร้าง</th>
-              <th>ดูผล</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="s in surveyStore.others" :key="s.id">
-              <td><div class="title-cell">{{ s.title }}</div></td>
-              <td style="font-size:12px;color:var(--text3);">{{ s.first_name || s.owner_username || '—' }}</td>
-              <td><span class="survey-badge" :class="badgeClass(s.status)">{{ badgeText(s.status) }}</span></td>
-              <td><span style="font-weight:700;color:var(--navy);">{{ s.response_count || 0 }}</span></td>
-              <td>
-                <div class="rating-stars">
-                  <span v-for="n in 5" :key="n" class="star" :class="{ empty: n > Math.round(parseFloat(s.avg_score) || 0) }">★</span>
-                </div>
-                <span style="font-size:11px;font-weight:700;color:var(--royal);margin-left:4px;">
-                  {{ s.avg_score ? parseFloat(s.avg_score).toFixed(1) : '' }}
-                </span>
-              </td>
-              <td class="date-cell">{{ formatDate(s.created_at) }}</td>
-              <td class="actions-cell">
-                <button class="btn-sm btn-blue" @click="$router.push(`/surveys/${s.id}/responses`)">📊 ดูผล</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
     <!-- Share modal -->
     <div class="overlay" :class="{ open: shareModal.open }">
       <div class="modal" style="max-width:400px;">
