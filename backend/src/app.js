@@ -9,8 +9,8 @@ app.use(express.json());
 
 app.use('/api/auth',          require('./routes/auth'));
 app.use('/api/responses/public', require('./routes/publicResponses'));
-app.use('/api/surveys',       require('./routes/surveys'));
 app.use('/api/surveys/:surveyId/responses', require('./routes/responses'));
+app.use('/api/surveys',       require('./routes/surveys'));
 app.use('/auth/google',      require('./routes/googleAuth'));
 app.use('/api/google',       require('./routes/googleForms'));
 
