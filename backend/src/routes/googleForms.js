@@ -1,6 +1,9 @@
 const router = require('express').Router();
 const { google } = require('googleapis');
+const auth = require('../middleware/auth');
 const { getClient, registerPendingState, getTokens, removeTokens } = require('../services/googleAuth');
+
+router.use(auth);
 
 // GET /api/google/auth-url
 router.get('/auth-url', (req, res) => {
@@ -48,7 +51,7 @@ router.post('/create-form', async (req, res) => {
     res.json({ formUrl: `https://docs.google.com/forms/d/${formId}/viewform`, formId });
   } catch (e) {
     console.error('Google Forms create error:', e.message);
-    res.status(500).json({ message: e.message || 'Failed to create Google Form' });
+    res.status(500).json({ message: 'ไม่สามารถสร้าง Google Form ได้ กรุณาลองใหม่' });
   }
 });
 

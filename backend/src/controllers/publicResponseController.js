@@ -8,12 +8,12 @@ exports.submitFromGoogleForm = async (req, res) => {
     const { formId } = req.params;
     const { respondent_name, answers = [] } = req.body;
 
-    // Find survey by google_form_id
+    // Find active survey by google_form_id
     const [[survey]] = await conn.query(
-      'SELECT id FROM surveys WHERE google_form_id = ?',
+      "SELECT id FROM surveys WHERE google_form_id = ? AND status = 'active'",
       [formId]
     );
-    if (!survey) return res.status(404).json({ message: 'Survey not found for this form' });
+    if (!survey) return res.status(404).json({ message: 'Survey not found or closed' });
 
     // Get questions in section + sort order
     const [questions] = await conn.query(

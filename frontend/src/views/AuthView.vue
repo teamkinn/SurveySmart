@@ -57,11 +57,8 @@
           <button type="button" class="back-link" @click="tab = 'login'">← กลับ</button>
           <p style="font-size:13px;color:var(--text3);">กรอกอีเมลเพื่อรับลิงก์รีเซตรหัสผ่าน</p>
           <div class="field"><label>อีเมล</label><input v-model="forgotEmail" type="email" placeholder="email@example.com" required></div>
-          <p v-if="error"        style="color:var(--red);font-size:12px;">{{ error }}</p>
-          <p v-if="forgotMsg"    style="color:#22c55e;font-size:12px;">{{ forgotMsg }}</p>
-          <div v-if="forgotLink" style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px;font-size:11px;word-break:break-all;">
-            <b>ลิงก์รีเซต (คัดลอกไปวางในเบราว์เซอร์):</b><br>{{ forgotLink }}
-          </div>
+          <p v-if="error"    style="color:var(--red);font-size:12px;">{{ error }}</p>
+          <p v-if="forgotMsg" style="color:#22c55e;font-size:12px;">{{ forgotMsg }}</p>
           <button type="submit" class="btn-primary" :disabled="busy">{{ busy ? 'กำลังส่ง...' : 'ส่งลิงก์รีเซต' }}</button>
         </form>
       </div>
@@ -84,7 +81,6 @@ const busy       = ref(false);
 const error      = ref('');
 const forgotEmail = ref('');
 const forgotMsg  = ref('');
-const forgotLink = ref('');
 
 const login = ref({ identifier: '', password: '' });
 const reg   = ref({ first_name: '', last_name: '', username: '', email: '', password: '', confirm_password: '' });
@@ -108,8 +104,7 @@ async function doForgot() {
   busy.value = true;
   try {
     const { data } = await api.post('/auth/forgot-password', { email: forgotEmail.value });
-    forgotMsg.value  = data.message;
-    if (data.resetUrl) forgotLink.value = data.resetUrl;
+    forgotMsg.value = data.message;
   } catch (e) {
     error.value = e.response?.data?.message || 'เกิดข้อผิดพลาด';
   } finally {
