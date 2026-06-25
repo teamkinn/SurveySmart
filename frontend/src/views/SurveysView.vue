@@ -64,7 +64,7 @@
             <td class="actions-cell">
               <button class="btn-sm btn-blue" @click="$router.push(`/surveys/${s.id}/responses`)">📊 ดูผล</button>
               <button v-if="s.status === 'draft'" class="btn-sm btn-outline" @click="publish(s.id)">🚀 เผยแพร่</button>
-              <button v-if="s.status === 'active' && s.share_token" class="btn-sm btn-outline" @click="openQR(s)">📱 QR</button>
+              <button v-if="s.google_form_url" class="btn-sm btn-outline" @click="openQR(s)">📱 QR</button>
               <a v-if="s.google_form_url" :href="s.google_form_url" target="_blank" class="btn-sm btn-gforms-link">
                 <img src="https://ssl.gstatic.com/docs/forms/device_home/android_192.png" style="width:13px;height:13px;vertical-align:middle;margin-right:3px;" alt="">Google Forms
               </a>
@@ -80,7 +80,7 @@
     <div class="overlay" :class="{ open: qrModal.open }">
       <div class="modal" style="max-width:380px;text-align:center;">
         <div class="modal-header">
-          <h2>📱 QR Code แบบสอบถาม</h2>
+          <h2>📱 QR Code Google Forms</h2>
           <button class="modal-close" @click="qrModal.open = false">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;align-items:center;gap:14px;">
@@ -167,7 +167,7 @@ async function remove(id) {
 }
 
 async function openQR(s) {
-  const url = `${window.location.origin}/fill/${s.share_token}`;
+  const url = s.google_form_url;
   const { default: QRCode } = await import('qrcode');
   const dataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2 });
   qrModal.value = { open: true, title: s.title, url, dataUrl };
