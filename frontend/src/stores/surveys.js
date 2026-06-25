@@ -42,6 +42,8 @@ export const useSurveyStore = defineStore('surveys', {
       await api.patch(`/surveys/${id}/publish`);
       const s = this.list.find(x => x.id === id);
       if (s) s.status = 'active';
+      const o = this.others.find(x => x.id === id);
+      if (o) o.status = 'active';
     },
     async remove(id) {
       await api.delete(`/surveys/${id}`);

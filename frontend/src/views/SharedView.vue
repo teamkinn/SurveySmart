@@ -22,6 +22,7 @@
       <select class="filter-select" v-model="statusFilter">
         <option value="">📌 ทุกสถานะ</option>
         <option value="active">🟢 Active</option>
+        <option value="draft">✏️ Draft</option>
         <option value="closed">⬜ Closed</option>
       </select>
       <button class="btn-sm btn-outline" @click="search = ''; statusFilter = ''">✕ ล้าง</button>
