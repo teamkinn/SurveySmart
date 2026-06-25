@@ -120,7 +120,6 @@
 <script setup>
 import { ref, computed, inject, onMounted } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
-import QRCode from 'qrcode';
 
 const surveyStore = useSurveyStore();
 const showToast   = inject('showToast');
@@ -169,6 +168,7 @@ async function remove(id) {
 
 async function openQR(s) {
   const url = `${window.location.origin}/fill/${s.share_token}`;
+  const { default: QRCode } = await import('qrcode');
   const dataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2 });
   qrModal.value = { open: true, title: s.title, url, dataUrl };
   copied.value = false;
