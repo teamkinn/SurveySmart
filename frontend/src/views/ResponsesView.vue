@@ -104,6 +104,36 @@
         </div>
       </div>
 
+      <!-- ── Descriptive Statistics ── -->
+      <div v-if="scoreValues.length" class="chart-card desc-card">
+        <h3 style="margin-bottom:14px;">📐 สถิติเชิงพรรณนา (คะแนนความพึงพอใจ)</h3>
+        <div class="desc-stats-row">
+          <div class="desc-stat">
+            <div class="desc-stat-symbol">x̄</div>
+            <div class="desc-stat-val">{{ meanScore }}</div>
+            <div class="desc-stat-label">Mean<br><span>ค่าเฉลี่ย</span></div>
+          </div>
+          <div class="desc-stat-divider"></div>
+          <div class="desc-stat">
+            <div class="desc-stat-symbol">Md</div>
+            <div class="desc-stat-val">{{ medianScore }}</div>
+            <div class="desc-stat-label">Median<br><span>ค่ากลาง</span></div>
+          </div>
+          <div class="desc-stat-divider"></div>
+          <div class="desc-stat">
+            <div class="desc-stat-symbol">Mo</div>
+            <div class="desc-stat-val">{{ modeScore }}</div>
+            <div class="desc-stat-label">Mode<br><span>ฐานนิยม</span></div>
+          </div>
+          <div class="desc-stat-divider"></div>
+          <div class="desc-stat">
+            <div class="desc-stat-symbol">n</div>
+            <div class="desc-stat-val">{{ scoreValues.length }}</div>
+            <div class="desc-stat-label">Count<br><span>จำนวนคะแนน</span></div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── Charts Row: Pie Chart (gender) + Avg Score Bar ── -->
       <div class="charts-2col">
 
@@ -293,10 +323,37 @@ const filteredResponses = computed(() =>
   })
 );
 
+const scoreValues = computed(() =>
+  filteredResponses.value.map(r => parseFloat(r.overall_score)).filter(s => !isNaN(s))
+);
+
 const avgScore = computed(() => {
-  const scores = filteredResponses.value.map(r => parseFloat(r.overall_score)).filter(s => !isNaN(s));
-  if (!scores.length) return '—';
-  return (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
+  const v = scoreValues.value;
+  if (!v.length) return '—';
+  return (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1);
+});
+
+const meanScore = computed(() => {
+  const v = scoreValues.value;
+  if (!v.length) return '—';
+  return (v.reduce((a, b) => a + b, 0) / v.length).toFixed(2);
+});
+
+const medianScore = computed(() => {
+  const v = [...scoreValues.value].sort((a, b) => a - b);
+  if (!v.length) return '—';
+  const mid = Math.floor(v.length / 2);
+  return (v.length % 2 !== 0 ? v[mid] : (v[mid - 1] + v[mid]) / 2).toFixed(2);
+});
+
+const modeScore = computed(() => {
+  const v = scoreValues.value;
+  if (!v.length) return '—';
+  const freq = {};
+  v.forEach(s => { freq[s] = (freq[s] || 0) + 1; });
+  const maxF = Math.max(...Object.values(freq));
+  const modes = Object.keys(freq).filter(k => freq[k] === maxF).map(Number).sort((a, b) => a - b);
+  return modes.map(m => m.toFixed(1)).join(', ');
 });
 
 const scoreColorClass = computed(() => {
@@ -460,6 +517,47 @@ onMounted(async () => {
 .breakdown-count { width: 20px; font-size: 10px; color: var(--text3); text-align: right; flex-shrink: 0; }
 
 .text-empty { font-size: 12px; color: var(--text3); font-style: italic; margin-top: 10px; }
+
+/* ── Descriptive Statistics ── */
+.desc-card { margin-bottom: 14px; }
+.desc-stats-row {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.desc-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 10px;
+  gap: 4px;
+  background: var(--white);
+}
+.desc-stat-symbol {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text3);
+  letter-spacing: .5px;
+  font-style: italic;
+}
+.desc-stat-val {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--navy);
+  line-height: 1.1;
+}
+.desc-stat-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  text-align: center;
+  line-height: 1.5;
+}
+.desc-stat-label span { font-weight: 400; color: var(--text3); }
+.desc-stat-divider { width: 1px; background: var(--line); flex-shrink: 0; }
 
 /* ── Bottom grid ── */
 .bottom-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; align-items: start; }
