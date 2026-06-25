@@ -127,9 +127,9 @@
           </div>
           <div class="desc-stat-divider"></div>
           <div class="desc-stat">
-            <div class="desc-stat-symbol">n</div>
-            <div class="desc-stat-val">{{ scoreValues.length }}</div>
-            <div class="desc-stat-label">Count<br><span>จำนวนคะแนน</span></div>
+            <div class="desc-stat-symbol">S.D.</div>
+            <div class="desc-stat-val">{{ sdScore }}</div>
+            <div class="desc-stat-label">Std. Dev.<br><span>ค่าเบี่ยงเบนมาตรฐาน</span></div>
           </div>
         </div>
       </div>
@@ -354,6 +354,14 @@ const modeScore = computed(() => {
   const maxF = Math.max(...Object.values(freq));
   const modes = Object.keys(freq).filter(k => freq[k] === maxF).map(Number).sort((a, b) => a - b);
   return modes.map(m => m.toFixed(1)).join(', ');
+});
+
+const sdScore = computed(() => {
+  const v = scoreValues.value;
+  if (v.length < 2) return '—';
+  const mean = v.reduce((a, b) => a + b, 0) / v.length;
+  const variance = v.reduce((sum, x) => sum + Math.pow(x - mean, 2), 0) / (v.length - 1);
+  return Math.sqrt(variance).toFixed(2);
 });
 
 const scoreColorClass = computed(() => {
