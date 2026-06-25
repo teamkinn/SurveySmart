@@ -64,6 +64,7 @@
             <td class="actions-cell">
               <button class="btn-sm btn-blue" @click="$router.push(`/surveys/${s.id}/responses`)">📊 ดูผล</button>
               <button v-if="s.status === 'draft'" class="btn-sm btn-outline" @click="publish(s.id)">🚀 เผยแพร่</button>
+              <button v-if="s.status === 'active' && s.share_token" class="btn-sm btn-outline" @click="openQR(s)">📱 QR</button>
               <a v-if="s.google_form_url" :href="s.google_form_url" target="_blank" class="btn-sm btn-gforms-link">
                 <img src="https://ssl.gstatic.com/docs/forms/device_home/android_192.png" style="width:13px;height:13px;vertical-align:middle;margin-right:3px;" alt="">Google Forms
               </a>
@@ -73,6 +74,27 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- QR modal -->
+    <div class="overlay" :class="{ open: qrModal.open }">
+      <div class="modal" style="max-width:380px;text-align:center;">
+        <div class="modal-header">
+          <h2>📱 QR Code แบบสอบถาม</h2>
+          <button class="modal-close" @click="qrModal.open = false">✕</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;align-items:center;gap:14px;">
+          <div style="font-size:13px;font-weight:700;color:var(--navy);">{{ qrModal.title }}</div>
+          <img v-if="qrModal.dataUrl" :src="qrModal.dataUrl" style="width:220px;height:220px;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff;" alt="QR Code">
+          <div style="width:100%;">
+            <div style="font-size:10px;color:var(--text3);margin-bottom:4px;">ลิงก์แบบสอบถาม</div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <input readonly :value="qrModal.url" style="flex:1;font-size:11px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--slate);color:var(--text2);">
+              <button class="btn-sm btn-blue" @click="copyLink">{{ copied ? '✓ คัดลอก' : '📋 คัดลอก' }}</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Share modal -->
@@ -98,6 +120,7 @@
 <script setup>
 import { ref, computed, inject, onMounted } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
+import QRCode from 'qrcode';
 
 const surveyStore = useSurveyStore();
 const showToast   = inject('showToast');
@@ -106,6 +129,8 @@ const search       = ref('');
 const statusFilter = ref('');
 const sortBy       = ref('newest');
 const shareModal   = ref({ open: false, surveyId: null, email: '' });
+const qrModal      = ref({ open: false, title: '', url: '', dataUrl: '' });
+const copied       = ref(false);
 
 const filtered = computed(() => {
   let result = surveyStore.list.filter(s => {
@@ -140,6 +165,19 @@ async function remove(id) {
   if (!confirm('ต้องการลบแบบสอบถามนี้หรือไม่?')) return;
   await surveyStore.remove(id);
   showToast('ลบแบบสอบถามแล้ว');
+}
+
+async function openQR(s) {
+  const url = `${window.location.origin}/fill/${s.share_token}`;
+  const dataUrl = await QRCode.toDataURL(url, { width: 300, margin: 2 });
+  qrModal.value = { open: true, title: s.title, url, dataUrl };
+  copied.value = false;
+}
+
+function copyLink() {
+  navigator.clipboard.writeText(qrModal.value.url);
+  copied.value = true;
+  setTimeout(() => { copied.value = false; }, 2000);
 }
 
 function openShare(s) {

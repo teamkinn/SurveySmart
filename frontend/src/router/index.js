@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth';
 const routes = [
   { path: '/login',          name: 'Login',         component: () => import('@/views/AuthView.vue'),         meta: { guest: true } },
   { path: '/reset-password', name: 'ResetPassword', component: () => import('@/views/ResetPasswordView.vue'), meta: { guest: true } },
+  { path: '/fill/:token',    name: 'Fill',          component: () => import('@/views/SurveyFillView.vue') },
   {
     path: '/',
     component: () => import('@/views/MainLayout.vue'),
