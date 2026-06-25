@@ -1,8 +1,8 @@
-const bcrypt       = require('bcryptjs');
-const jwt          = require('jsonwebtoken');
-const crypto       = require('crypto');
-const nodemailer   = require('nodemailer');
-const db           = require('../config/db');
+const bcrypt     = require('bcryptjs');
+const jwt        = require('jsonwebtoken');
+const crypto     = require('crypto');
+const nodemailer = require('nodemailer');
+const db         = require('../config/db');
 
 function makeTransport() {
   if (!process.env.MAIL_HOST) return null;
@@ -26,8 +26,18 @@ exports.register = async (req, res) => {
     const { username, email, password, first_name, last_name } = req.body;
     if (!username || !email || !password)
       return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบ' });
+    if (username.length > 50)
+      return res.status(400).json({ message: 'ชื่อผู้ใช้ต้องไม่เกิน 50 ตัวอักษร' });
+    if (email.length > 255)
+      return res.status(400).json({ message: 'อีเมลไม่ถูกต้อง' });
     if (password.length < 8)
       return res.status(400).json({ message: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร' });
+    if (password.length > 128)
+      return res.status(400).json({ message: 'รหัสผ่านต้องไม่เกิน 128 ตัวอักษร' });
+    if (first_name && first_name.length > 100)
+      return res.status(400).json({ message: 'ชื่อต้องไม่เกิน 100 ตัวอักษร' });
+    if (last_name && last_name.length > 100)
+      return res.status(400).json({ message: 'นามสกุลต้องไม่เกิน 100 ตัวอักษร' });
 
     const [existing] = await db.query(
       'SELECT id FROM users WHERE email = ? OR username = ?',
@@ -44,7 +54,8 @@ exports.register = async (req, res) => {
     const user = { id: result.insertId, username, email, first_name: first_name || '', last_name: last_name || '', role: 'user' };
     res.status(201).json({ token: signToken(user), user });
   } catch (err) {
-    res.status(500).json({ message: 'เกิดข้อผิดพลาด', error: err.message });
+    console.error('register error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -53,6 +64,8 @@ exports.login = async (req, res) => {
     const { identifier, password } = req.body;
     if (!identifier || !password)
       return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบ' });
+    if (identifier.length > 255 || password.length > 128)
+      return res.status(400).json({ message: 'ข้อมูลไม่ถูกต้อง' });
 
     const [rows] = await db.query(
       'SELECT * FROM users WHERE email = ? OR username = ?',
@@ -69,7 +82,8 @@ exports.login = async (req, res) => {
     const { password: _p, ...safe } = user;
     res.json({ token: signToken(user), user: safe });
   } catch (err) {
-    res.status(500).json({ message: 'เกิดข้อผิดพลาด', error: err.message });
+    console.error('login error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -83,7 +97,7 @@ exports.forgot = async (req, res) => {
     if (!rows.length) return res.json({ message: 'หากอีเมลนี้มีในระบบ คุณจะได้รับลิงก์รีเซตรหัสผ่าน' });
 
     const token   = crypto.randomBytes(32).toString('hex');
-    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const expires = new Date(Date.now() + 60 * 60 * 1000);
     await db.query(
       'INSERT INTO password_resets (user_id, token, expires_at) VALUES (?,?,?)',
       [rows[0].id, token, expires]
@@ -100,13 +114,12 @@ exports.forgot = async (req, res) => {
                <p><a href="${resetUrl}">${resetUrl}</a></p>
                <p>หากคุณไม่ได้ขอรีเซต ไม่ต้องทำอะไร</p>`,
       });
-      res.json({ message: 'หากอีเมลนี้มีในระบบ คุณจะได้รับลิงก์รีเซตรหัสผ่าน' });
-    } else {
-      // No email configured — return the link directly (dev/demo mode)
-      res.json({ message: 'ไม่ได้ตั้งค่าอีเมล', resetUrl });
     }
+    // Never return the resetUrl to the caller — even in dev mode
+    res.json({ message: 'หากอีเมลนี้มีในระบบ คุณจะได้รับลิงก์รีเซตรหัสผ่าน' });
   } catch (err) {
-    res.status(500).json({ message: 'เกิดข้อผิดพลาด', error: err.message });
+    console.error('forgot error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -115,6 +128,7 @@ exports.resetPassword = async (req, res) => {
     const { token, password } = req.body;
     if (!token || !password) return res.status(400).json({ message: 'ข้อมูลไม่ครบ' });
     if (password.length < 8) return res.status(400).json({ message: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร' });
+    if (password.length > 128) return res.status(400).json({ message: 'รหัสผ่านต้องไม่เกิน 128 ตัวอักษร' });
 
     const [rows] = await db.query(
       'SELECT * FROM password_resets WHERE token = ? AND used = 0 AND expires_at > NOW()',
@@ -126,9 +140,13 @@ exports.resetPassword = async (req, res) => {
     await db.query('UPDATE users SET password = ? WHERE id = ?', [hash, rows[0].user_id]);
     await db.query('UPDATE password_resets SET used = 1 WHERE id = ?', [rows[0].id]);
 
+    // Purge old/used reset tokens to keep table clean
+    await db.query('DELETE FROM password_resets WHERE expires_at < NOW() OR used = 1');
+
     res.json({ message: 'รีเซตรหัสผ่านเรียบร้อยแล้ว' });
   } catch (err) {
-    res.status(500).json({ message: 'เกิดข้อผิดพลาด', error: err.message });
+    console.error('resetPassword error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -141,6 +159,7 @@ exports.me = async (req, res) => {
     if (!rows.length) return res.status(404).json({ message: 'ไม่พบผู้ใช้' });
     res.json(rows[0]);
   } catch (err) {
-    res.status(500).json({ message: 'เกิดข้อผิดพลาด', error: err.message });
+    console.error('me error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };

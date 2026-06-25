@@ -15,7 +15,8 @@ exports.list = async (req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -34,7 +35,8 @@ exports.get = async (req, res) => {
     );
     res.json({ ...surveys[0], questions });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -69,7 +71,8 @@ exports.create = async (req, res) => {
     const [[created]] = await db.query('SELECT * FROM v_survey_summary WHERE id = ?', [surveyId]);
     res.status(201).json(created);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -110,7 +113,8 @@ exports.update = async (req, res) => {
     const [[updated]] = await db.query('SELECT * FROM v_survey_summary WHERE id = ?', [req.params.id]);
     res.json(updated);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -125,7 +129,8 @@ exports.remove = async (req, res) => {
     await db.query('DELETE FROM surveys WHERE id = ?', [req.params.id]);
     res.json({ message: 'ลบแบบสอบถามเรียบร้อยแล้ว' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -142,7 +147,8 @@ exports.publish = async (req, res) => {
     const [[s]] = await db.query('SELECT share_token FROM surveys WHERE id = ?', [req.params.id]);
     res.json({ message: 'เผยแพร่แบบสอบถามเรียบร้อยแล้ว', share_token: s.share_token });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -160,7 +166,8 @@ exports.listOthers = async (req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -177,7 +184,8 @@ exports.listShared = async (req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -200,7 +208,8 @@ exports.share = async (req, res) => {
     );
     res.json({ message: 'แชร์แบบสอบถามเรียบร้อยแล้ว' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -225,7 +234,8 @@ exports.stats = async (req, res) => {
     );
     res.json({ ...totals, ...resp });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -246,6 +256,7 @@ exports.getByToken = async (req, res) => {
     await db.query('UPDATE surveys SET view_count = view_count + 1 WHERE id = ?', [surveys[0].id]);
     res.json({ ...surveys[0], questions });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };

@@ -1,10 +1,11 @@
 const router = require('express').Router();
 const { google } = require('googleapis');
-const { getClient, getTokens, removeTokens } = require('../services/googleAuth');
+const { getClient, registerPendingState, getTokens, removeTokens } = require('../services/googleAuth');
 
 // GET /api/google/auth-url
 router.get('/auth-url', (req, res) => {
   const state = Math.random().toString(36).substring(2, 12);
+  registerPendingState(state);
   const client = getClient();
   const url = client.generateAuthUrl({
     access_type: 'offline',

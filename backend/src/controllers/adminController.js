@@ -7,7 +7,8 @@ exports.listUsers = async (req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('adminController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -21,7 +22,8 @@ exports.setRole = async (req, res) => {
     await db.query('UPDATE users SET role = ? WHERE id = ?', [role, req.params.id]);
     res.json({ message: 'อัปเดต role เรียบร้อยแล้ว' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('adminController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -32,7 +34,8 @@ exports.deleteUser = async (req, res) => {
     await db.query('DELETE FROM users WHERE id = ?', [req.params.id]);
     res.json({ message: 'ลบผู้ใช้เรียบร้อยแล้ว' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('adminController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -44,6 +47,7 @@ exports.deleteNullResponses = async (req, res) => {
     );
     res.json({ message: `ลบ ${result.affectedRows} คำตอบที่ไม่มีคะแนน`, deleted: result.affectedRows });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('adminController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };

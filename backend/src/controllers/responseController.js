@@ -4,7 +4,6 @@ exports.list = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
 
-    // Any authenticated user can view responses (read-only)
     const [access] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
     if (!access.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
@@ -29,7 +28,8 @@ exports.list = async (req, res) => {
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('responses.list error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -41,15 +41,24 @@ exports.submit = async (req, res) => {
     const { surveyId } = req.params;
     const { respondent_name, answers = [] } = req.body;
 
-    // Compute overall score from numeric answers
+    // Only accept submissions for active surveys
+    const [[survey]] = await conn.query(
+      "SELECT id FROM surveys WHERE id = ? AND status = 'active'",
+      [surveyId]
+    );
+    if (!survey) return res.status(403).json({ message: 'แบบสอบถามนี้ปิดรับคำตอบแล้ว' });
+
+    // Input length guard
+    const name = (respondent_name || 'ไม่ระบุ').slice(0, 200);
+
     const scores = answers.map(a => parseFloat(a.score)).filter(s => !isNaN(s));
     const overall = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : null;
 
-    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket?.remoteAddress || null;
+    const ip = req.ip || null;
 
     const [resResult] = await conn.query(
       'INSERT INTO responses (survey_id, respondent_name, overall_score, ip_address) VALUES (?,?,?,?)',
-      [surveyId, respondent_name || 'ไม่ระบุ', overall, ip]
+      [surveyId, name, overall, ip]
     );
     const responseId = resResult.insertId;
 
@@ -57,9 +66,9 @@ exports.submit = async (req, res) => {
       const vals = answers.map(a => [
         responseId,
         a.question_id,
-        a.answer_text  || null,
-        a.answer_json  ? JSON.stringify(a.answer_json) : null,
-        a.score        !== undefined ? parseFloat(a.score) || null : null,
+        a.answer_text  ? String(a.answer_text).slice(0, 5000)  : null,
+        a.answer_json  ? JSON.stringify(a.answer_json).slice(0, 10000) : null,
+        a.score !== undefined ? parseFloat(a.score) || null : null,
       ]);
       await conn.query(
         'INSERT INTO response_answers (response_id, question_id, answer_text, answer_json, score) VALUES ?',
@@ -71,7 +80,8 @@ exports.submit = async (req, res) => {
     res.status(201).json({ id: responseId, message: 'ส่งคำตอบเรียบร้อยแล้ว' });
   } catch (err) {
     await conn.rollback();
-    res.status(500).json({ message: err.message });
+    console.error('responses.submit error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   } finally {
     conn.release();
   }
@@ -80,17 +90,14 @@ exports.submit = async (req, res) => {
 exports.chartData = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
-    // Any authenticated user can view chart data (read-only)
     const [access] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
     if (!access.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
-    // Get all questions for this survey
     const [questions] = await db.query(
       'SELECT id, question_text, question_type, options_json FROM questions WHERE survey_id = ? ORDER BY section_number, sort_order',
       [surveyId]
     );
 
-    // Get all answers
     const [answers] = await db.query(
       `SELECT ra.question_id, ra.answer_text, ra.answer_json, ra.score
        FROM response_answers ra
@@ -99,7 +106,6 @@ exports.chartData = async (req, res) => {
       [surveyId]
     );
 
-    // mysql2 returns JSON columns as already-parsed objects; handle both object and string
     const parseJson = v => {
       if (!v) return null;
       if (typeof v !== 'string') return v;
@@ -150,7 +156,8 @@ exports.chartData = async (req, res) => {
 
     res.json(charts);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('responses.chartData error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
@@ -163,7 +170,6 @@ exports.stats = async (req, res) => {
       [surveyId]
     );
 
-    // Per-question stats using the view
     const [breakdown] = await db.query(
       'SELECT * FROM v_question_stats WHERE survey_id = ? ORDER BY section_number, question_id',
       [surveyId]
@@ -171,6 +177,7 @@ exports.stats = async (req, res) => {
 
     res.json({ ...summary, breakdown });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('responses.stats error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };

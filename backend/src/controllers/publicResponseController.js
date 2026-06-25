@@ -80,7 +80,8 @@ exports.submitFromGoogleForm = async (req, res) => {
   } catch (err) {
     await conn.rollback();
     console.error('Public response error:', err.message);
-    res.status(500).json({ message: err.message });
+    console.error('publicResponse error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   } finally {
     conn.release();
   }
