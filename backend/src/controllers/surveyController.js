@@ -6,7 +6,11 @@ const genToken = () => randomBytes(32).toString('hex');
 exports.list = async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT * FROM v_survey_summary WHERE user_id = ? ORDER BY created_at DESC',
+      `SELECT v.*, s.google_form_url, s.google_form_id
+       FROM v_survey_summary v
+       JOIN surveys s ON s.id = v.id
+       WHERE v.user_id = ?
+       ORDER BY v.created_at DESC`,
       [req.user.id]
     );
     res.json(rows);

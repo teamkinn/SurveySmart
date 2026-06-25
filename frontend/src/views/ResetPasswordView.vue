@@ -8,7 +8,7 @@
         <div v-if="done" style="margin-top:24px;text-align:center;">
           <div style="font-size:40px;">✅</div>
           <div style="font-size:15px;font-weight:700;color:var(--navy);margin-top:10px;">รีเซตรหัสผ่านเรียบร้อยแล้ว</div>
-          <button class="btn-primary" style="margin-top:20px;" @click="$router.push('/auth')">เข้าสู่ระบบ</button>
+          <button class="btn-primary" style="margin-top:20px;" @click="$router.push('/login')">เข้าสู่ระบบ</button>
         </div>
 
         <div v-else-if="!token" style="margin-top:24px;color:var(--red);font-size:13px;">

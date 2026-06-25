@@ -262,8 +262,14 @@ watch(selectedId, async (id) => {
     api.get(`/surveys/${id}/responses`),
     api.get(`/surveys/${id}/responses/chart-data`),
   ]);
-  responses.value = r1.data;
-  charts.value    = r2.data;
+  responses.value = r1.data.map(r => {
+    let answers = r.answers;
+    if (typeof answers === 'string') { try { answers = JSON.parse(answers); } catch { answers = []; } }
+    answers = Array.isArray(answers) ? answers.filter(a => a && a.question_id) : [];
+    const paraAns = answers.find(a => a.question_type === 'para' && a.answer_text);
+    return { ...r, answers, note: paraAns?.answer_text || null };
+  });
+  charts.value = r2.data;
 });
 
 watch(() => surveyStore.list, (list) => {

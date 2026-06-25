@@ -90,10 +90,10 @@ const filtered = computed(() =>
 );
 
 function badgeClass(status) {
-  return { 'badge-active': status === 'active', 'badge-closed': status === 'closed' };
+  return { 'badge-active': status === 'active', 'badge-draft': status === 'draft', 'badge-closed': status === 'closed' };
 }
 function badgeText(status) {
-  return status === 'active' ? '🟢 Active' : '⬜ Closed';
+  return status === 'active' ? '🟢 Active' : status === 'draft' ? '✏️ Draft' : '⬜ Closed';
 }
 function formatDate(d) {
   return d ? new Date(d).toLocaleDateString('th-TH') : '—';
