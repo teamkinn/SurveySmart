@@ -5,8 +5,9 @@ const ctrl    = require('../controllers/adminController');
 
 router.use(auth, isAdmin);
 
-router.get('/users',             ctrl.listUsers);
-router.patch('/users/:id/role',  ctrl.setRole);
-router.delete('/users/:id',      ctrl.deleteUser);
+router.get('/users',                                    ctrl.listUsers);
+router.patch('/users/:id/role',                         ctrl.setRole);
+router.delete('/users/:id',                             ctrl.deleteUser);
+router.delete('/surveys/:surveyId/responses/nullscore', ctrl.deleteNullResponses);
 
 module.exports = router;

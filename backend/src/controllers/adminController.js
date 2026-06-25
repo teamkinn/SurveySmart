@@ -35,3 +35,15 @@ exports.deleteUser = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+exports.deleteNullResponses = async (req, res) => {
+  try {
+    const [result] = await db.query(
+      'DELETE FROM responses WHERE survey_id = ? AND overall_score IS NULL',
+      [req.params.surveyId]
+    );
+    res.json({ message: `ลบ ${result.affectedRows} คำตอบที่ไม่มีคะแนน`, deleted: result.affectedRows });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
