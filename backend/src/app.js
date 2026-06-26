@@ -4,7 +4,7 @@ const cors      = require('cors');
 const app = express();
 
 app.set('trust proxy', 1);
-app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173', allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'] }));
+app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173' }));
 app.use(express.json({ limit: '100kb' }));
 
 app.use('/api/auth',          require('./routes/auth'));

@@ -57,51 +57,6 @@ router.post('/create-form', async (req, res) => {
   }
 });
 
-// POST /api/google/apps-script-setup  (called by Google Apps Script, no Google OAuth needed)
-router.post('/apps-script-setup', async (req, res) => {
-  const { formId, title, description, questions } = req.body;
-  if (!formId || !title) return res.status(400).json({ message: 'formId and title are required' });
-
-  try {
-    const [existing] = await db.query(
-      'SELECT id FROM surveys WHERE google_form_id = ? AND user_id = ?',
-      [formId, req.user.id]
-    );
-
-    if (existing.length) {
-      const surveyId = existing[0].id;
-      await db.query(
-        'UPDATE surveys SET title=?, description=?, updated_at=NOW() WHERE id=?',
-        [title, description || '', surveyId]
-      );
-      if (Array.isArray(questions) && questions.length) {
-        await db.query('DELETE FROM questions WHERE survey_id = ?', [surveyId]);
-        const vals = questions.map(q => [surveyId, q.section || 1, q.order || 0, q.text || '', q.type || 'short', q.required ? 1 : 0, q.options ? JSON.stringify(q.options) : null]);
-        await db.query('INSERT INTO questions (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json) VALUES ?', [vals]);
-      }
-      return res.json({ surveyId, title, updated: true });
-    }
-
-    const token = randomBytes(32).toString('hex');
-    const [result] = await db.query(
-      'INSERT INTO surveys (user_id, title, description, status, share_token, google_form_url, google_form_id) VALUES (?,?,?,?,?,?,?)',
-      [req.user.id, title, description || '', 'active', token,
-       `https://docs.google.com/forms/d/${formId}/viewform`, formId]
-    );
-    const surveyId = result.insertId;
-
-    if (Array.isArray(questions) && questions.length) {
-      const vals = questions.map(q => [surveyId, q.section || 1, q.order || 0, q.text || '', q.type || 'short', q.required ? 1 : 0, q.options ? JSON.stringify(q.options) : null]);
-      await db.query('INSERT INTO questions (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json) VALUES ?', [vals]);
-    }
-
-    res.status(201).json({ surveyId, title, created: true });
-  } catch (e) {
-    console.error('Apps Script setup error:', e.message);
-    res.status(500).json({ message: 'Setup failed' });
-  }
-});
-
 // GET /api/google/import-auth-url
 router.get('/import-auth-url', (req, res) => {
   const state = Math.random().toString(36).substring(2, 12);
