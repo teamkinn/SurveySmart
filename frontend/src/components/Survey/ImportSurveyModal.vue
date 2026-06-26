@@ -93,7 +93,7 @@ function setupSurvey() {
   var res = UrlFetchApp.fetch(SURVEYSMART_API + '/google/apps-script-setup', {
     method: 'post',
     contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + SURVEYSMART_TOKEN },
+    headers: { Authorization: 'Bearer ' + SURVEYSMART_TOKEN, 'ngrok-skip-browser-warning': '1' },
     payload: JSON.stringify({
       formId:      form.getId(),
       title:       form.getTitle(),
@@ -115,6 +115,7 @@ function onFormSubmit(e) {
   UrlFetchApp.fetch(SURVEYSMART_API + '/responses/public/form/' + FormApp.getActiveForm().getId(), {
     method: 'post',
     contentType: 'application/json',
+    headers: { 'ngrok-skip-browser-warning': '1' },
     payload: JSON.stringify({
       respondent_name: e.response.getRespondentEmail() || 'Google Forms',
       answers: answers
