@@ -101,6 +101,13 @@ body {
   cursor: pointer; transition: background .15s; letter-spacing: .3px;
 }
 .btn-new:hover { background: var(--navy2); }
+.btn-import {
+  display: flex; align-items: center; gap: 6px; padding: 8px 14px;
+  background: transparent; color: var(--navy); border: 1.5px solid var(--navy); border-radius: var(--r2);
+  font-family: 'Sarabun', sans-serif; font-size: 12px; font-weight: 700;
+  cursor: pointer; transition: background .15s, color .15s; letter-spacing: .3px;
+}
+.btn-import:hover { background: var(--navy); color: white; }
 .btn-primary {
   padding: 11px; background: var(--navy); color: white; border: none; border-radius: var(--r2);
   font-family: 'Sarabun', sans-serif; font-size: 14px; font-weight: 700; cursor: pointer;

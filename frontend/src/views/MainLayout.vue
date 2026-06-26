@@ -28,6 +28,7 @@
         </RouterLink>
       </div>
       <div class="top-nav-right">
+        <button class="btn-import" @click="openImport">⬇ นำเข้า Google Forms</button>
         <button class="btn-new" @click="openBuilder">＋ สร้างแบบสอบถาม</button>
       </div>
     </div>
@@ -39,6 +40,9 @@
 
     <!-- SURVEY BUILDER MODAL -->
     <SurveyBuilder ref="builderRef" @created="onSurveyCreated" />
+
+    <!-- IMPORT MODAL -->
+    <ImportSurveyModal ref="importRef" @imported="onSurveyImported" />
   </div>
 </template>
 
@@ -48,6 +52,7 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { useSurveyStore } from '@/stores/surveys';
 import SurveyBuilder from '@/components/Survey/SurveyBuilder.vue';
+import ImportSurveyModal from '@/components/Survey/ImportSurveyModal.vue';
 
 const router      = useRouter();
 const authStore   = useAuthStore();
@@ -55,6 +60,7 @@ const surveyStore = useSurveyStore();
 const showToast   = inject('showToast');
 
 const builderRef = ref(null);
+const importRef  = ref(null);
 
 const isAdmin = computed(() => authStore.user?.role === 'admin');
 
@@ -88,8 +94,16 @@ function openBuilder() {
   builderRef.value?.open();
 }
 
+function openImport() {
+  importRef.value?.open();
+}
+
 function onSurveyCreated() {
   surveyStore.fetchAll();
   showToast('สร้างแบบสอบถามเรียบร้อย 🎊');
+}
+
+function onSurveyImported() {
+  surveyStore.fetchAll();
 }
 </script>
