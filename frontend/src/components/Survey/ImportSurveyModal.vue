@@ -4,171 +4,150 @@
       <div class="modal-header">
         <h2>
           <img src="https://ssl.gstatic.com/docs/forms/device_home/android_192.png" class="gf-logo" alt="">
-          นำเข้าจาก Google Forms
+          นำเข้าจาก Google Forms (Apps Script)
         </h2>
         <button class="modal-close" @click="close">✕</button>
       </div>
 
       <div class="modal-body">
+        <div class="im-field">
+          <label class="im-label">Server URL (เปลี่ยนเป็น ngrok URL เมื่อทดสอบ)</label>
+          <input
+            v-model="serverUrl"
+            class="im-input"
+            placeholder="http://localhost:3000"
+          />
+        </div>
 
-        <!-- Input phase -->
-        <template v-if="phase === 'input'">
-          <p class="im-desc">วางลิงก์ Google Forms ของคุณ ระบบจะนำเข้าคำถามและข้อมูลการตอบสนองทั้งหมดมายังเว็บไซต์นี้</p>
-          <div class="im-field">
-            <label class="im-label">Google Forms URL หรือ Form ID</label>
-            <input
-              v-model="formUrl"
-              class="im-input"
-              placeholder="https://docs.google.com/forms/d/..."
-              @keyup.enter="startAuth"
-            />
-          </div>
-          <div class="im-note">
-            <span>ℹ️</span>
-            <span>ระบบจะนำเข้าเฉพาะฟอร์มที่คุณเป็นเจ้าของใน Google Account ที่เชื่อมต่อ</span>
-          </div>
-        </template>
+        <div class="im-script-header">
+          <span class="im-label">Apps Script — คัดลอกแล้ววางใน Google Form</span>
+          <button class="btn-copy" @click="copyScript">{{ copied ? '✓ คัดลอกแล้ว' : '📋 คัดลอก' }}</button>
+        </div>
+        <pre class="im-code">{{ generatedScript }}</pre>
 
-        <!-- Authorizing phase -->
-        <template v-else-if="phase === 'authorizing'">
-          <div class="im-status-box">
-            <div class="im-big-icon">🔐</div>
-            <p class="im-status-title">รอการอนุญาต Google</p>
-            <p class="im-status-sub">หน้าต่าง Google กำลังเปิดอยู่ — เข้าสู่ระบบและอนุญาตการเข้าถึง Forms</p>
-          </div>
-        </template>
+        <div class="im-steps">
+          <div class="im-step"><span class="step-num">1</span>เปิด Google Form → <strong>Extensions → Apps Script</strong></div>
+          <div class="im-step"><span class="step-num">2</span>ลบโค้ดเดิมทั้งหมด แล้ววางโค้ดด้านบน → บันทึก</div>
+          <div class="im-step"><span class="step-num">3</span>เลือก <strong>setupSurvey</strong> → คลิก <strong>▶ Run</strong> (อนุญาตสิทธิ์เมื่อถูกถาม)</div>
+          <div class="im-step"><span class="step-num">4</span>ไปที่ Triggers (ไอคอนนาฬิกา) → Add Trigger → <strong>onFormSubmit</strong> → On form submit</div>
+        </div>
 
-        <!-- Importing phase -->
-        <template v-else-if="phase === 'importing'">
-          <div class="im-status-box">
-            <div class="im-spinner-wrap"><span class="im-spinner">⟳</span></div>
-            <p class="im-status-title">กำลังนำเข้าข้อมูล...</p>
-            <p class="im-status-sub">กำลังดึงคำถามและข้อมูลการตอบสนองจาก Google Forms</p>
-          </div>
-        </template>
-
-        <!-- Done phase -->
-        <template v-else-if="phase === 'done'">
-          <div class="im-done-box">
-            <div class="im-done-icon">✓</div>
-            <p class="im-done-title">นำเข้าสำเร็จ!</p>
-            <p class="im-done-survey">{{ result.title }}</p>
-            <div class="im-stats">
-              <div class="im-stat">
-                <div class="im-stat-num">{{ result.questionCount }}</div>
-                <div class="im-stat-label">คำถาม</div>
-              </div>
-              <div class="im-stat">
-                <div class="im-stat-num">{{ result.responseCount }}</div>
-                <div class="im-stat-label">การตอบสนอง</div>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <!-- Error phase -->
-        <template v-else-if="phase === 'error'">
-          <div class="im-status-box">
-            <div class="im-big-icon">⚠️</div>
-            <p class="im-status-title">เกิดข้อผิดพลาด</p>
-            <p class="im-status-sub im-error-msg">{{ errorMsg }}</p>
-          </div>
-        </template>
-
+        <div class="im-note">
+          <span>⚠️</span>
+          <span>Token มีอายุ 7 วัน หากหมดอายุ ให้คัดลอกโค้ดใหม่และรัน setupSurvey อีกครั้ง</span>
+        </div>
       </div>
 
       <div class="modal-footer">
-        <template v-if="phase === 'input'">
-          <button class="btn-sm btn-outline" @click="close">ยกเลิก</button>
-          <button class="btn-sm btn-blue" :disabled="!formUrl.trim()" @click="startAuth">
-            เชื่อมต่อ Google →
-          </button>
-        </template>
-        <template v-else-if="phase === 'error'">
-          <button class="btn-sm btn-outline" @click="close">ปิด</button>
-          <button class="btn-sm btn-blue" @click="phase = 'input'">ลองใหม่</button>
-        </template>
-        <template v-else-if="phase === 'done'">
-          <button class="btn-sm btn-blue" @click="closeAndGo">ดูแบบสอบถาม</button>
-        </template>
+        <button class="btn-sm btn-outline" @click="close">ปิด</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, inject } from 'vue';
-import { useRouter } from 'vue-router';
-import api from '@/api';
+import { ref, computed } from 'vue';
+import { useAuthStore } from '@/stores/auth';
 
 const emit = defineEmits(['imported']);
-const router = useRouter();
-const showToast = inject('showToast');
+const authStore = useAuthStore();
 
 const isOpen   = ref(false);
-const phase    = ref('input');
-const formUrl  = ref('');
-const errorMsg = ref('');
-const result   = ref({ title: '', questionCount: 0, responseCount: 0 });
+const serverUrl = ref('http://localhost:3000');
+const copied   = ref(false);
+
+const generatedScript = computed(() => {
+  const api = serverUrl.value.replace(/\/$/, '') + '/api';
+  const token = authStore.token || 'YOUR_TOKEN_HERE';
+  return `const SURVEYSMART_API = '${api}';
+const SURVEYSMART_TOKEN = '${token}';
+
+function setupSurvey() {
+  var form = FormApp.getActiveForm();
+  var formId = form.getId();
+  var title = form.getTitle();
+  var description = form.getDescription();
+  var items = form.getItems();
+  var questions = items.map(function(item, idx) {
+    var q = { text: item.getTitle(), order: idx + 1, section: 1, type: 'short', required: false, options: null };
+    var type = item.getType();
+    if (type === FormApp.ItemType.PARAGRAPH_TEXT) q.type = 'para';
+    else if (type === FormApp.ItemType.MULTIPLE_CHOICE) {
+      q.type = 'radio';
+      q.options = item.asMultipleChoiceItem().getChoices().map(function(c){ return c.getValue(); });
+    } else if (type === FormApp.ItemType.CHECKBOX) {
+      q.type = 'checkbox';
+      q.options = item.asCheckboxItem().getChoices().map(function(c){ return c.getValue(); });
+    } else if (type === FormApp.ItemType.LIST) {
+      q.type = 'dropdown';
+      q.options = item.asListItem().getChoices().map(function(c){ return c.getValue(); });
+    } else if (type === FormApp.ItemType.SCALE) {
+      q.type = 'scale';
+      var s = item.asScaleItem();
+      q.options = { min: s.getLowerBound(), max: s.getUpperBound(), min_label: s.getLeftLabel(), max_label: s.getRightLabel() };
+    } else if (type === FormApp.ItemType.DATE) q.type = 'date';
+    else if (type === FormApp.ItemType.TIME) q.type = 'time';
+    try { q.required = item.isRequired(); } catch(e) {}
+    return q;
+  });
+
+  var payload = JSON.stringify({ formId: formId, title: title, description: description, questions: questions });
+  var resp = UrlFetchApp.fetch(SURVEYSMART_API + '/google/apps-script-setup', {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'Authorization': 'Bearer ' + SURVEYSMART_TOKEN, 'ngrok-skip-browser-warning': '1' },
+    payload: payload,
+    muteHttpExceptions: true
+  });
+  Logger.log(resp.getContentText());
+}
+
+function onFormSubmit(e) {
+  var form = FormApp.getActiveForm();
+  var formId = form.getId();
+  var response = e.response;
+  var answers = [];
+  response.getItemResponses().forEach(function(ir) {
+    answers.push({ question: ir.getItem().getTitle(), answer: ir.getResponse() });
+  });
+  var payload = JSON.stringify({
+    respondent_name: response.getRespondentEmail() || 'ไม่ระบุชื่อ',
+    answers: answers
+  });
+  UrlFetchApp.fetch(SURVEYSMART_API + '/responses/public/form/' + formId, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'ngrok-skip-browser-warning': '1' },
+    payload: payload,
+    muteHttpExceptions: true
+  });
+}`;
+});
 
 function open() {
-  formUrl.value  = '';
-  phase.value    = 'input';
-  errorMsg.value = '';
-  isOpen.value   = true;
+  isOpen.value = true;
+  copied.value = false;
 }
 
 function close() {
   isOpen.value = false;
 }
 
-function closeAndGo() {
-  isOpen.value = false;
-  emit('imported');
-  router.push('/surveys');
-}
-
-async function startAuth() {
-  if (!formUrl.value.trim()) return;
+async function copyScript() {
   try {
-    const { data } = await api.get('/google/import-auth-url');
-    const { url, state } = data;
-    phase.value = 'authorizing';
-
-    const popup = window.open(url, 'google-auth', 'width=520,height=620,scrollbars=yes');
-
-    const onMessage = async (event) => {
-      if (event.data?.type !== 'google-oauth-done') return;
-      window.removeEventListener('message', onMessage);
-      if (popup && !popup.closed) popup.close();
-      await doImport(event.data.state);
-    };
-    window.addEventListener('message', onMessage);
-
-    const checkClosed = setInterval(() => {
-      if (popup?.closed) {
-        clearInterval(checkClosed);
-        window.removeEventListener('message', onMessage);
-        if (phase.value === 'authorizing') phase.value = 'input';
-      }
-    }, 500);
-  } catch (e) {
-    errorMsg.value = e.response?.data?.message || 'ไม่สามารถเชื่อมต่อ Google ได้';
-    phase.value = 'error';
-  }
-}
-
-async function doImport(state) {
-  phase.value = 'importing';
-  try {
-    const { data } = await api.post('/google/import-form', { state, formUrl: formUrl.value });
-    result.value = data;
-    phase.value  = 'done';
-    showToast?.(`นำเข้า "${data.title}" สำเร็จ 🎉`);
-    emit('imported');
-  } catch (e) {
-    errorMsg.value = e.response?.data?.message || 'นำเข้า Google Form ไม่สำเร็จ';
-    phase.value = 'error';
+    await navigator.clipboard.writeText(generatedScript.value);
+    copied.value = true;
+    setTimeout(() => { copied.value = false; }, 2000);
+  } catch {
+    // fallback for non-secure contexts
+    const ta = document.createElement('textarea');
+    ta.value = generatedScript.value;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    copied.value = true;
+    setTimeout(() => { copied.value = false; }, 2000);
   }
 }
 
@@ -178,37 +157,29 @@ defineExpose({ open });
 <style scoped>
 .im-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:1100; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .2s; }
 .im-overlay.open { opacity:1; pointer-events:all; }
-.im-modal { background:white; border-radius:var(--r); width:100%; max-width:520px; max-height:88vh; display:flex; flex-direction:column; box-shadow:var(--sh3); }
+.im-modal { background:white; border-radius:var(--r); width:100%; max-width:620px; max-height:90vh; display:flex; flex-direction:column; box-shadow:var(--sh3); }
 .modal-header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--line); }
 .modal-header h2 { display:flex; align-items:center; gap:8px; font-size:15px; color:var(--navy); margin:0; }
 .gf-logo { width:20px; height:20px; }
 .modal-close { background:none; border:none; font-size:16px; cursor:pointer; color:var(--text3); padding:4px 8px; }
 .modal-close:hover { color:var(--text); }
-.modal-body { flex:1; overflow-y:auto; padding:20px; }
+.modal-body { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:14px; }
 .modal-footer { display:flex; justify-content:flex-end; gap:8px; padding:12px 20px; border-top:1px solid var(--line); }
 
-.im-desc { font-size:13px; color:var(--text2); margin:0 0 16px; line-height:1.6; }
-.im-field { display:flex; flex-direction:column; gap:6px; margin-bottom:12px; }
+.im-field { display:flex; flex-direction:column; gap:6px; }
 .im-label { font-size:12px; font-weight:600; color:var(--text2); }
 .im-input { border:1px solid var(--line); border-radius:var(--r2); padding:9px 12px; font-size:13px; font-family:inherit; color:var(--text); outline:none; width:100%; box-sizing:border-box; }
 .im-input:focus { border-color:var(--royal); }
+
+.im-script-header { display:flex; align-items:center; justify-content:space-between; }
+.btn-copy { background:var(--royal); color:white; border:none; border-radius:var(--r2); padding:5px 12px; font-size:12px; cursor:pointer; font-family:inherit; }
+.btn-copy:hover { opacity:.85; }
+
+.im-code { background:#1e1e2e; color:#cdd6f4; font-family:'Consolas','Courier New',monospace; font-size:11px; line-height:1.5; padding:14px; border-radius:var(--r2); overflow-x:auto; white-space:pre; margin:0; max-height:220px; overflow-y:auto; }
+
+.im-steps { display:flex; flex-direction:column; gap:8px; }
+.im-step { display:flex; align-items:flex-start; gap:10px; font-size:13px; color:var(--text2); line-height:1.5; }
+.step-num { min-width:22px; height:22px; background:var(--royal); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; flex-shrink:0; margin-top:1px; }
+
 .im-note { display:flex; align-items:flex-start; gap:6px; font-size:11px; color:var(--text3); background:var(--slate); border-radius:var(--r2); padding:8px 10px; line-height:1.5; }
-
-.im-status-box { display:flex; flex-direction:column; align-items:center; padding:36px 0; gap:10px; text-align:center; }
-.im-big-icon { font-size:40px; }
-.im-status-title { font-size:15px; font-weight:700; color:var(--navy); margin:0; }
-.im-status-sub { font-size:12px; color:var(--text3); margin:0; max-width:340px; line-height:1.6; }
-.im-error-msg { color:var(--red); }
-.im-spinner-wrap { font-size:36px; color:var(--royal); }
-.im-spinner { display:inline-block; animation:spin .8s linear infinite; }
-@keyframes spin { to { transform:rotate(360deg); } }
-
-.im-done-box { display:flex; flex-direction:column; align-items:center; padding:24px 0; gap:10px; text-align:center; }
-.im-done-icon { width:52px; height:52px; background:var(--green); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:700; }
-.im-done-title { font-size:16px; font-weight:700; color:var(--navy); margin:0; }
-.im-done-survey { font-size:13px; color:var(--text2); margin:0; max-width:360px; }
-.im-stats { display:flex; gap:24px; margin-top:4px; }
-.im-stat { display:flex; flex-direction:column; align-items:center; gap:2px; }
-.im-stat-num { font-size:24px; font-weight:800; color:var(--royal); }
-.im-stat-label { font-size:11px; color:var(--text3); }
 </style>
