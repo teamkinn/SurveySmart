@@ -7,6 +7,100 @@ const { getClient, registerPendingState, getTokens, removeTokens } = require('..
 
 router.use(auth);
 
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+
+async function sbGet(table, query = '') {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
+    headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` }
+  });
+  return r.json();
+}
+
+async function sbPatch(table, id, data) {
+  await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(data)
+  });
+}
+
+// POST /api/google/supabase-sync
+router.post('/supabase-sync', async (req, res) => {
+  const jwt = require('jsonwebtoken');
+  let setupsDone = 0, responsesDone = 0, errors = [];
+
+  try {
+    // --- Process setups ---
+    const setups = await sbGet('ss_setups', 'processed=eq.false&order=created_at.asc');
+    for (const s of Array.isArray(setups) ? setups : []) {
+      try {
+        const decoded = jwt.verify(s.token, process.env.JWT_SECRET);
+        if (decoded.id !== req.user.id) continue;
+
+        const questions = JSON.parse(s.questions || '[]');
+        const formId = s.form_id;
+
+        const [existing] = await db.query('SELECT id FROM surveys WHERE google_form_id = ? AND user_id = ?', [formId, req.user.id]);
+        let surveyId;
+        if (existing.length) {
+          surveyId = existing[0].id;
+          await db.query('UPDATE surveys SET title=?, description=?, updated_at=NOW() WHERE id=?', [s.title, s.description || '', surveyId]);
+          await db.query('DELETE FROM questions WHERE survey_id = ?', [surveyId]);
+        } else {
+          const token = randomBytes(32).toString('hex');
+          const [r] = await db.query(
+            'INSERT INTO surveys (user_id, title, description, status, share_token, google_form_url, google_form_id) VALUES (?,?,?,?,?,?,?)',
+            [req.user.id, s.title, s.description || '', 'active', token, `https://docs.google.com/forms/d/${formId}/viewform`, formId]
+          );
+          surveyId = r.insertId;
+        }
+        if (questions.length) {
+          const vals = questions.map(q => [surveyId, q.section||1, q.order||0, q.text||'', q.type||'short', q.required?1:0, q.options?JSON.stringify(q.options):null]);
+          await db.query('INSERT INTO questions (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json) VALUES ?', [vals]);
+        }
+        await sbPatch('ss_setups', s.id, { processed: true });
+        setupsDone++;
+      } catch (e) { errors.push(`setup ${s.id}: ${e.message}`); }
+    }
+
+    // --- Process responses for this user's forms ---
+    const [userSurveys] = await db.query('SELECT id, google_form_id FROM surveys WHERE user_id = ? AND google_form_id IS NOT NULL', [req.user.id]);
+    const formMap = {};
+    for (const sv of userSurveys) formMap[sv.google_form_id] = sv.id;
+    const formIds = Object.keys(formMap);
+
+    if (formIds.length) {
+      const responses = await sbGet('ss_responses', `processed=eq.false&order=created_at.asc&form_id=in.(${formIds.map(f => `"${f}"`).join(',')})`);
+      for (const resp of Array.isArray(responses) ? responses : []) {
+        try {
+          const surveyId = formMap[resp.form_id];
+          if (!surveyId) continue;
+          const answers = JSON.parse(resp.answers || '[]');
+
+          const [rRow] = await db.query('INSERT INTO responses (survey_id, respondent_name, submitted_at) VALUES (?,?,NOW())', [surveyId, resp.respondent_name || 'ไม่ระบุ']);
+          const responseId = rRow.insertId;
+
+          for (const ans of answers) {
+            const [qs] = await db.query('SELECT id FROM questions WHERE survey_id = ? AND question_text = ? LIMIT 1', [surveyId, ans.question]);
+            if (qs.length) {
+              const ansText = Array.isArray(ans.answer) ? ans.answer.join(', ') : String(ans.answer ?? '');
+              await db.query('INSERT INTO response_answers (response_id, question_id, answer_text) VALUES (?,?,?)', [responseId, qs[0].id, ansText]);
+            }
+          }
+          await sbPatch('ss_responses', resp.id, { processed: true });
+          responsesDone++;
+        } catch (e) { errors.push(`response ${resp.id}: ${e.message}`); }
+      }
+    }
+
+    res.json({ ok: true, setupsDone, responsesDone, errors });
+  } catch (e) {
+    console.error('Supabase sync error:', e.message);
+    res.status(500).json({ message: 'Sync failed', error: e.message });
+  }
+});
+
 // GET /api/google/auth-url
 router.get('/auth-url', (req, res) => {
   const state = Math.random().toString(36).substring(2, 12);
