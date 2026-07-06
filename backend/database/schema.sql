@@ -117,10 +117,12 @@ CREATE TABLE responses (
   respondent_name  VARCHAR(255)  DEFAULT 'ไม่ระบุ',
   overall_score    DECIMAL(5,2),   -- avg of all numeric answers (computed on insert)
   ip_address       VARCHAR(45),    -- IPv4 or IPv6, optional
+  google_response_id VARCHAR(128), -- Google Forms response ID, for dedup on sync (NULL for native responses)
   submitted_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
 
   PRIMARY KEY (id),
   KEY idx_survey_time (survey_id, submitted_at),
+  UNIQUE KEY uq_survey_google_resp (survey_id, google_response_id),
   FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

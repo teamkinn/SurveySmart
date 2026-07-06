@@ -54,21 +54,21 @@ import { useSurveyStore } from '@/stores/surveys';
 import SurveyBuilder from '@/components/Survey/SurveyBuilder.vue';
 import ImportSurveyModal from '@/components/Survey/ImportSurveyModal.vue';
 
-const router      = useRouter();
-const authStore   = useAuthStore();
+const router = useRouter();
+const authStore = useAuthStore();
 const surveyStore = useSurveyStore();
-const showToast   = inject('showToast');
+const showToast = inject('showToast');
 
 const builderRef = ref(null);
-const importRef  = ref(null);
+const importRef = ref(null);
 
 const isAdmin = computed(() => authStore.user?.role === 'admin');
 
 const navItems = computed(() => [
-  { to: '/',          icon: '🏠', label: 'หน้าหลัก' },
-  { to: '/surveys',   icon: '📋', label: 'แบบสอบถามของฉัน' },
+  { to: '/', icon: '🏠', label: 'หน้าหลัก' },
+  { to: '/surveys', icon: '📋', label: 'แบบสอบถามของฉัน' },
   { to: '/dashboard', icon: '📊', label: 'Dashboard' },
-  { to: '/shared',    icon: '👁️', label: 'แชร์ให้ฉันดู' },
+  { to: '/shared', icon: '👁️', label: 'แชร์ให้ฉันดู' },
   ...(isAdmin.value ? [{ to: '/admin', icon: '⚙️', label: 'Admin' }] : []),
 ]);
 

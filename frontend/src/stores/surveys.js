@@ -3,10 +3,10 @@ import api from '@/api';
 
 export const useSurveyStore = defineStore('surveys', {
   state: () => ({
-    list:   [],
+    list: [],
     shared: [],
     others: [],
-    stats:  {},
+    stats: {},
     loading: false,
   }),
   actions: {
@@ -19,10 +19,10 @@ export const useSurveyStore = defineStore('surveys', {
           api.get('/surveys/others'),
           api.get('/surveys/stats'),
         ]);
-        this.list   = s.data;
+        this.list = s.data;
         this.shared = sh.data;
         this.others = ot.data;
-        this.stats  = st.data;
+        this.stats = st.data;
       } finally {
         this.loading = false;
       }

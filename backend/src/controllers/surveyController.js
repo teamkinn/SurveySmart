@@ -1,4 +1,4 @@
-const db           = require('../config/db');
+const db = require('../config/db');
 const { randomBytes } = require('crypto');
 
 const genToken = () => randomBytes(32).toString('hex');
@@ -47,23 +47,36 @@ exports.create = async (req, res) => {
 
     const token = genToken();
     const [result] = await db.query(
-      'INSERT INTO surveys (user_id, title, description, status, close_date, share_token, google_form_url, google_form_id) VALUES (?,?,?,?,?,?,?,?)',
-      [req.user.id, title, description || '', 'draft', close_date || null, token, google_form_url || null, google_form_id || null]
+      `INSERT INTO surveys
+         (user_id, title, description, status, close_date, share_token, google_form_url, google_form_id)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      [
+        req.user.id,
+        title,
+        description || '',
+        'draft',
+        close_date || null,
+        token,
+        google_form_url || null,
+        google_form_id || null,
+      ]
     );
     const surveyId = result.insertId;
 
     if (Array.isArray(questions) && questions.length) {
       const vals = questions.map(q => [
         surveyId,
-        q.section  || 1,
-        q.order    || 0,
-        q.text     || '',
-        q.type     || 'short',
+        q.section || 1,
+        q.order || 0,
+        q.text || '',
+        q.type || 'short',
         q.required ? 1 : 0,
-        q.options  ? JSON.stringify(q.options) : null,
+        q.options ? JSON.stringify(q.options) : null,
       ]);
       await db.query(
-        'INSERT INTO questions (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json) VALUES ?',
+        `INSERT INTO questions
+           (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
+         VALUES ?`,
         [vals]
       );
     }
@@ -87,7 +100,9 @@ exports.update = async (req, res) => {
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
     await db.query(
-      'UPDATE surveys SET title=?, description=?, status=?, close_date=?, target_responses=?, updated_at=NOW() WHERE id=?',
+      `UPDATE surveys
+       SET title=?, description=?, status=?, close_date=?, target_responses=?, updated_at=NOW()
+       WHERE id=?`,
       [title, description, status, close_date || null, target_responses || null, req.params.id]
     );
 
@@ -96,15 +111,17 @@ exports.update = async (req, res) => {
       if (questions.length) {
         const vals = questions.map(q => [
           req.params.id,
-          q.section  || 1,
-          q.order    || 0,
-          q.text     || '',
-          q.type     || 'short',
+          q.section || 1,
+          q.order || 0,
+          q.text || '',
+          q.type || 'short',
           q.required ? 1 : 0,
-          q.options  ? JSON.stringify(q.options) : null,
+          q.options ? JSON.stringify(q.options) : null,
         ]);
         await db.query(
-          'INSERT INTO questions (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json) VALUES ?',
+          `INSERT INTO questions
+             (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
+           VALUES ?`,
           [vals]
         );
       }
@@ -249,7 +266,10 @@ exports.getByToken = async (req, res) => {
     if (!surveys.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถามหรือปิดรับแล้ว' });
 
     const [questions] = await db.query(
-      'SELECT id, section_number, sort_order, question_text, question_type, is_required, options_json FROM questions WHERE survey_id = ? ORDER BY section_number, sort_order',
+      `SELECT id, section_number, sort_order, question_text, question_type, is_required, options_json
+       FROM questions
+       WHERE survey_id = ?
+       ORDER BY section_number, sort_order`,
       [surveys[0].id]
     );
 

@@ -4,17 +4,17 @@ exports.list = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
 
-    const [access] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
-    if (!access.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    const [chk] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
+    if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
     const [rows] = await db.query(
       `SELECT r.*,
               JSON_ARRAYAGG(
                 JSON_OBJECT(
-                  'question_id',   ra.question_id,
-                  'answer_text',   ra.answer_text,
-                  'answer_json',   ra.answer_json,
-                  'score',         ra.score,
+                  'question_id', ra.question_id,
+                  'answer_text', ra.answer_text,
+                  'answer_json', ra.answer_json,
+                  'score', ra.score,
                   'question_type', q.question_type
                 )
               ) AS answers
@@ -90,11 +90,14 @@ exports.submit = async (req, res) => {
 exports.chartData = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
-    const [access] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
-    if (!access.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    const [chk] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
+    if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
     const [questions] = await db.query(
-      'SELECT id, question_text, question_type, options_json FROM questions WHERE survey_id = ? ORDER BY section_number, sort_order',
+      `SELECT id, question_text, question_type, options_json
+       FROM questions
+       WHERE survey_id = ?
+       ORDER BY section_number, sort_order`,
       [surveyId]
     );
 
@@ -145,13 +148,44 @@ exports.chartData = async (req, res) => {
           if (v !== null && v !== undefined) counts[Math.round(v)] = (counts[Math.round(v)] || 0) + 1;
         });
         data = Object.entries(counts).map(([k, v]) => ({ label: k, count: v }));
-      } else if (['short', 'para'].includes(q.question_type)) {
+      } else if (['short', 'para', 'date', 'time', 'file'].includes(q.question_type)) {
         chartType = 'text';
         data = qAnswers.slice(0, 5).map(a => a.answer_text).filter(Boolean);
+      } else if (['mcgrid', 'cbgrid'].includes(q.question_type)) {
+        chartType = 'grid';
+        const cols = Array.isArray(opts?.cols) ? opts.cols : [];
+        const rowLabels = Array.isArray(opts?.rows) ? opts.rows : [];
+        const rows = rowLabels.map(rowLabel => {
+          const counts = {};
+          cols.forEach(c => {
+            counts[c] = 0;
+          });
+          qAnswers.forEach(a => {
+            const parsed = parseJson(a.answer_json);
+            if (!parsed || !(rowLabel in parsed)) return;
+            const v = parsed[rowLabel];
+            if (Array.isArray(v)) {
+              v.forEach(x => {
+                if (x in counts) counts[x]++;
+              });
+            } else if (v && v in counts) {
+              counts[v]++;
+            }
+          });
+          return { row: rowLabel, counts };
+        });
+        data = { cols, rows };
       }
 
       const total = qAnswers.length;
-      return { question_id: q.id, question_text: q.question_text, question_type: q.question_type, chartType, data, total };
+      return {
+        question_id: q.id,
+        question_text: q.question_text,
+        question_type: q.question_type,
+        chartType,
+        data,
+        total,
+      };
     });
 
     res.json(charts);
@@ -164,6 +198,7 @@ exports.chartData = async (req, res) => {
 exports.stats = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
+
     const [[summary]] = await db.query(
       `SELECT COUNT(*) AS total, ROUND(AVG(overall_score),2) AS avg_score, MAX(submitted_at) AS last_at
        FROM responses WHERE survey_id = ?`,

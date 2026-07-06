@@ -31,14 +31,14 @@ import { ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import api from '@/api';
 
-const route    = useRoute();
-const router   = useRouter();
-const token    = route.query.token || '';
+const route = useRoute();
+const router = useRouter();
+const token = route.query.token || '';
 const password = ref('');
-const confirm  = ref('');
-const error    = ref('');
-const busy     = ref(false);
-const done     = ref(false);
+const confirm = ref('');
+const error = ref('');
+const busy = ref(false);
+const done = ref(false);
 
 async function doReset() {
   error.value = '';

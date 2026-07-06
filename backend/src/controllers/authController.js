@@ -1,8 +1,8 @@
-const bcrypt     = require('bcryptjs');
-const jwt        = require('jsonwebtoken');
-const crypto     = require('crypto');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const nodemailer = require('nodemailer');
-const db         = require('../config/db');
+const db = require('../config/db');
 
 function makeTransport() {
   if (!process.env.MAIL_HOST) return null;
@@ -51,10 +51,22 @@ exports.register = async (req, res) => {
       'INSERT INTO users (username, email, password, first_name, last_name) VALUES (?,?,?,?,?)',
       [username, email, hash, first_name || '', last_name || '']
     );
-    const user = { id: result.insertId, username, email, first_name: first_name || '', last_name: last_name || '', role: 'user' };
+    const user = {
+      id: result.insertId,
+      username,
+      email,
+      first_name: first_name || '',
+      last_name: last_name || '',
+      role: 'user',
+    };
     res.status(201).json({ token: signToken(user), user });
   } catch (err) {
-    console.error('register error:', err.message);
+    console.error('register error:', {
+      name: err.name,
+      code: err.code,
+      message: err.message,
+      stack: err.stack,
+    });
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
@@ -82,7 +94,12 @@ exports.login = async (req, res) => {
     const { password: _p, ...safe } = user;
     res.json({ token: signToken(user), user: safe });
   } catch (err) {
-    console.error('login error:', err.message);
+    console.error('login error:', {
+      name: err.name,
+      code: err.code,
+      message: err.message,
+      stack: err.stack,
+    });
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
@@ -96,7 +113,7 @@ exports.forgot = async (req, res) => {
     // Always respond the same way to prevent email enumeration
     if (!rows.length) return res.json({ message: 'หากอีเมลนี้มีในระบบ คุณจะได้รับลิงก์รีเซตรหัสผ่าน' });
 
-    const token   = crypto.randomBytes(32).toString('hex');
+    const token = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 60 * 60 * 1000);
     await db.query(
       'INSERT INTO password_resets (user_id, token, expires_at) VALUES (?,?,?)',

@@ -56,9 +56,9 @@ import api from '@/api';
 
 const authStore = useAuthStore();
 const showToast = inject('showToast');
-const self      = authStore.user;
-const users     = ref([]);
-const loading   = ref(true);
+const self = authStore.user;
+const users = ref([]);
+const loading = ref(true);
 
 async function load() {
   loading.value = true;

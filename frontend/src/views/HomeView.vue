@@ -64,12 +64,12 @@ import { useRouter } from 'vue-router';
 import { useSurveyStore } from '@/stores/surveys';
 import SurveyCard from '@/components/Survey/SurveyCard.vue';
 
-const router      = useRouter();
+const router = useRouter();
 const surveyStore = useSurveyStore();
 
 const loading = computed(() => surveyStore.loading);
-const stats   = computed(() => surveyStore.stats);
-const recent  = computed(() => surveyStore.list.slice(0, 3));
+const stats = computed(() => surveyStore.stats);
+const recent = computed(() => surveyStore.list.slice(0, 3));
 const avgScore = computed(() => {
   const a = parseFloat(stats.value.overall_avg);
   return isNaN(a) ? '—' : a.toFixed(1);

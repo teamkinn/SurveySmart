@@ -161,6 +161,23 @@
             <div v-else v-for="(t, i) in c.data" :key="i" class="text-bubble">{{ t }}</div>
           </div>
 
+          <div v-else-if="c.chartType === 'grid' && c.data.rows?.length" class="grid-chart">
+            <table class="grid-chart-table">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th v-for="col in c.data.cols" :key="col">{{ col }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in c.data.rows" :key="row.row">
+                  <td class="grid-row-label">{{ row.row }}</td>
+                  <td v-for="col in c.data.cols" :key="col" class="grid-cell-count">{{ row.counts[col] || 0 }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
           <div v-else class="text-empty">ยังไม่มีข้อมูลเพียงพอ</div>
         </div>
       </div>
@@ -210,9 +227,9 @@ import { useSurveyStore } from '@/stores/surveys';
 import api from '@/api';
 
 const surveyStore = useSurveyStore();
-const selectedId  = ref(null);
-const responses   = ref([]);
-const charts      = ref([]);
+const selectedId = ref(null);
+const responses = ref([]);
+const charts = ref([]);
 
 const overallAvg = computed(() => {
   const a = parseFloat(surveyStore.stats.overall_avg);
@@ -253,6 +270,7 @@ const Q_TYPE_LABELS = {
   short: 'คำตอบสั้นๆ', para: 'ย่อหน้า', radio: 'หลายตัวเลือก',
   checkbox: 'ช่องทำเครื่องหมาย', dropdown: 'เลื่อนลง', scale: 'สเกล',
   star: 'ดาว', date: 'วันที่', time: 'เวลา',
+  mcgrid: 'ตารางกริด (เลือกตอบ)', cbgrid: 'ตารางกริด (ช่องทำเครื่องหมาย)', file: 'อัปโหลดไฟล์',
 };
 function typeLabel(t) { return Q_TYPE_LABELS[t] || t; }
 
@@ -393,6 +411,14 @@ onMounted(() => surveyStore.fetchAll());
 .text-answers { display: flex; flex-direction: column; gap: 6px; }
 .text-bubble { background: var(--slate); border-radius: var(--r2); padding: 7px 10px; font-size: 12px; color: var(--text); border-left: 3px solid var(--royal2); }
 .text-empty  { font-size: 12px; color: var(--text3); font-style: italic; }
+
+/* ── Grid question chart (mcgrid/cbgrid) ── */
+.grid-chart { overflow-x: auto; }
+.grid-chart-table { border-collapse: collapse; font-size: 11px; width: 100%; }
+.grid-chart-table th, .grid-chart-table td { padding: 5px 8px; border: 1px solid var(--line); text-align: center; white-space: nowrap; }
+.grid-chart-table th { background: var(--slate); color: var(--text2); font-weight: 700; font-size: 10px; }
+.grid-row-label { text-align: left !important; font-weight: 600; color: var(--text); background: var(--slate); }
+.grid-cell-count { color: var(--navy); font-weight: 600; }
 
 /* ── Bottom grid ── */
 .bottom-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; align-items: start; margin-top: 14px; }

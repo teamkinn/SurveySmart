@@ -3,7 +3,12 @@ const { google } = require('googleapis');
 const { randomBytes } = require('crypto');
 const auth = require('../middleware/auth');
 const db = require('../config/db');
-const { getClient, registerPendingState, getTokens, removeTokens } = require('../services/googleAuth');
+const {
+  getClient,
+  registerPendingState,
+  getTokens,
+  removeTokens,
+} = require('../services/googleAuth');
 
 router.use(auth);
 
@@ -12,7 +17,7 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 async function sbGet(table, query = '') {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${query}`, {
-    headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` }
+    headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
   });
   return r.json();
 }
@@ -20,15 +25,22 @@ async function sbGet(table, query = '') {
 async function sbPatch(table, id, data) {
   await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
     method: 'PATCH',
-    headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-    body: JSON.stringify(data)
+    headers: {
+      apikey: SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify(data),
   });
 }
 
 // POST /api/google/supabase-sync
 router.post('/supabase-sync', async (req, res) => {
   const jwt = require('jsonwebtoken');
-  let setupsDone = 0, responsesDone = 0, errors = [];
+  let setupsDone = 0,
+    responsesDone = 0,
+    errors = [];
 
   try {
     // --- Process setups ---
@@ -41,56 +53,107 @@ router.post('/supabase-sync', async (req, res) => {
         const questions = JSON.parse(s.questions || '[]');
         const formId = s.form_id;
 
-        const [existing] = await db.query('SELECT id FROM surveys WHERE google_form_id = ? AND user_id = ?', [formId, req.user.id]);
+        const [existing] = await db.query(
+          'SELECT id FROM surveys WHERE google_form_id = ? AND user_id = ?',
+          [formId, req.user.id]
+        );
         let surveyId;
         if (existing.length) {
           surveyId = existing[0].id;
-          await db.query('UPDATE surveys SET title=?, description=?, updated_at=NOW() WHERE id=?', [s.title, s.description || '', surveyId]);
+          await db.query('UPDATE surveys SET title=?, description=?, updated_at=NOW() WHERE id=?', [
+            s.title,
+            s.description || '',
+            surveyId,
+          ]);
           await db.query('DELETE FROM questions WHERE survey_id = ?', [surveyId]);
         } else {
           const token = randomBytes(32).toString('hex');
           const [r] = await db.query(
-            'INSERT INTO surveys (user_id, title, description, status, share_token, google_form_url, google_form_id) VALUES (?,?,?,?,?,?,?)',
-            [req.user.id, s.title, s.description || '', 'active', token, `https://docs.google.com/forms/d/${formId}/viewform`, formId]
+            `INSERT INTO surveys
+               (user_id, title, description, status, share_token, google_form_url, google_form_id)
+             VALUES (?,?,?,?,?,?,?)`,
+            [
+              req.user.id,
+              s.title,
+              s.description || '',
+              'active',
+              token,
+              `https://docs.google.com/forms/d/${formId}/viewform`,
+              formId,
+            ]
           );
           surveyId = r.insertId;
         }
         if (questions.length) {
-          const vals = questions.map(q => [surveyId, q.section||1, q.order||0, q.text||'', q.type||'short', q.required?1:0, q.options?JSON.stringify(q.options):null]);
-          await db.query('INSERT INTO questions (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json) VALUES ?', [vals]);
+          const vals = questions.map(q => [
+            surveyId,
+            q.section || 1,
+            q.order || 0,
+            q.text || '',
+            q.type || 'short',
+            q.required ? 1 : 0,
+            q.options ? JSON.stringify(q.options) : null,
+          ]);
+          await db.query(
+            `INSERT INTO questions
+               (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
+             VALUES ?`,
+            [vals]
+          );
         }
         await sbPatch('ss_setups', s.id, { processed: true });
         setupsDone++;
-      } catch (e) { errors.push(`setup ${s.id}: ${e.message}`); }
+      } catch (e) {
+        errors.push(`setup ${s.id}: ${e.message}`);
+      }
     }
 
     // --- Process responses for this user's forms ---
-    const [userSurveys] = await db.query('SELECT id, google_form_id FROM surveys WHERE user_id = ? AND google_form_id IS NOT NULL', [req.user.id]);
+    const [userSurveys] = await db.query(
+      'SELECT id, google_form_id FROM surveys WHERE user_id = ? AND google_form_id IS NOT NULL',
+      [req.user.id]
+    );
     const formMap = {};
     for (const sv of userSurveys) formMap[sv.google_form_id] = sv.id;
     const formIds = Object.keys(formMap);
 
     if (formIds.length) {
-      const responses = await sbGet('ss_responses', `processed=eq.false&order=created_at.asc&form_id=in.(${formIds.map(f => `"${f}"`).join(',')})`);
+      const responses = await sbGet(
+        'ss_responses',
+        `processed=eq.false&order=created_at.asc&form_id=in.(${formIds
+          .map(f => `"${f}"`)
+          .join(',')})`
+      );
       for (const resp of Array.isArray(responses) ? responses : []) {
         try {
           const surveyId = formMap[resp.form_id];
           if (!surveyId) continue;
           const answers = JSON.parse(resp.answers || '[]');
 
-          const [rRow] = await db.query('INSERT INTO responses (survey_id, respondent_name, submitted_at) VALUES (?,?,NOW())', [surveyId, resp.respondent_name || 'ไม่ระบุ']);
+          const [rRow] = await db.query(
+            'INSERT INTO responses (survey_id, respondent_name, submitted_at) VALUES (?,?,NOW())',
+            [surveyId, resp.respondent_name || 'ไม่ระบุ']
+          );
           const responseId = rRow.insertId;
 
           for (const ans of answers) {
-            const [qs] = await db.query('SELECT id FROM questions WHERE survey_id = ? AND question_text = ? LIMIT 1', [surveyId, ans.question]);
+            const [qs] = await db.query(
+              'SELECT id FROM questions WHERE survey_id = ? AND question_text = ? LIMIT 1',
+              [surveyId, ans.question]
+            );
             if (qs.length) {
               const ansText = Array.isArray(ans.answer) ? ans.answer.join(', ') : String(ans.answer ?? '');
-              await db.query('INSERT INTO response_answers (response_id, question_id, answer_text) VALUES (?,?,?)', [responseId, qs[0].id, ansText]);
+              await db.query(
+                'INSERT INTO response_answers (response_id, question_id, answer_text) VALUES (?,?,?)',
+                [responseId, qs[0].id, ansText]
+              );
             }
           }
           await sbPatch('ss_responses', resp.id, { processed: true });
           responsesDone++;
-        } catch (e) { errors.push(`response ${resp.id}: ${e.message}`); }
+        } catch (e) {
+          errors.push(`response ${resp.id}: ${e.message}`);
+        }
       }
     }
 
@@ -119,7 +182,9 @@ router.get('/auth-url', (req, res) => {
 router.post('/create-form', async (req, res) => {
   const { state, survey } = req.body;
   const tokens = getTokens(state);
-  if (!tokens) return res.status(401).json({ message: 'Google auth expired — please authorize again' });
+  if (!tokens) {
+    return res.status(401).json({ message: 'Google auth expired — please authorize again' });
+  }
 
   const client = getClient();
   client.setCredentials(tokens);
@@ -127,7 +192,12 @@ router.post('/create-form', async (req, res) => {
 
   try {
     const { data: form } = await forms.forms.create({
-      requestBody: { info: { title: survey.title || 'แบบสอบถาม', documentTitle: survey.title || 'แบบสอบถาม' } },
+      requestBody: {
+        info: {
+          title: survey.title || 'แบบสอบถาม',
+          documentTitle: survey.title || 'แบบสอบถาม',
+        },
+      },
     });
     const formId = form.formId;
 
@@ -154,7 +224,9 @@ router.post('/create-form', async (req, res) => {
 // POST /api/google/apps-script-setup
 router.post('/apps-script-setup', async (req, res) => {
   const { formId, title, description, questions } = req.body;
-  if (!formId || !title) return res.status(400).json({ message: 'formId and title are required' });
+  if (!formId || !title) {
+    return res.status(400).json({ message: 'formId and title are required' });
+  }
 
   try {
     const [existing] = await db.query(
@@ -164,25 +236,65 @@ router.post('/apps-script-setup', async (req, res) => {
 
     if (existing.length) {
       const surveyId = existing[0].id;
-      await db.query('UPDATE surveys SET title=?, description=?, updated_at=NOW() WHERE id=?', [title, description || '', surveyId]);
+      await db.query('UPDATE surveys SET title=?, description=?, updated_at=NOW() WHERE id=?', [
+        title,
+        description || '',
+        surveyId,
+      ]);
       if (Array.isArray(questions) && questions.length) {
         await db.query('DELETE FROM questions WHERE survey_id = ?', [surveyId]);
-        const vals = questions.map(q => [surveyId, q.section || 1, q.order || 0, q.text || '', q.type || 'short', q.required ? 1 : 0, q.options ? JSON.stringify(q.options) : null]);
-        await db.query('INSERT INTO questions (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json) VALUES ?', [vals]);
+        const vals = questions.map(q => [
+          surveyId,
+          q.section || 1,
+          q.order || 0,
+          q.text || '',
+          q.type || 'short',
+          q.required ? 1 : 0,
+          q.options ? JSON.stringify(q.options) : null,
+        ]);
+        await db.query(
+          `INSERT INTO questions
+             (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
+           VALUES ?`,
+          [vals]
+        );
       }
       return res.json({ surveyId, title, updated: true });
     }
 
     const token = randomBytes(32).toString('hex');
     const [result] = await db.query(
-      'INSERT INTO surveys (user_id, title, description, status, share_token, google_form_url, google_form_id) VALUES (?,?,?,?,?,?,?)',
-      [req.user.id, title, description || '', 'active', token, `https://docs.google.com/forms/d/${formId}/viewform`, formId]
+      `INSERT INTO surveys
+         (user_id, title, description, status, share_token, google_form_url, google_form_id)
+       VALUES (?,?,?,?,?,?,?)`,
+      [
+        req.user.id,
+        title,
+        description || '',
+        'active',
+        token,
+        `https://docs.google.com/forms/d/${formId}/viewform`,
+        formId,
+      ]
     );
     const surveyId = result.insertId;
 
     if (Array.isArray(questions) && questions.length) {
-      const vals = questions.map(q => [surveyId, q.section || 1, q.order || 0, q.text || '', q.type || 'short', q.required ? 1 : 0, q.options ? JSON.stringify(q.options) : null]);
-      await db.query('INSERT INTO questions (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json) VALUES ?', [vals]);
+      const vals = questions.map(q => [
+        surveyId,
+        q.section || 1,
+        q.order || 0,
+        q.text || '',
+        q.type || 'short',
+        q.required ? 1 : 0,
+        q.options ? JSON.stringify(q.options) : null,
+      ]);
+      await db.query(
+        `INSERT INTO questions
+           (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
+         VALUES ?`,
+        [vals]
+      );
     }
 
     res.status(201).json({ surveyId, title, created: true });
@@ -215,7 +327,16 @@ router.post('/import-form', async (req, res) => {
   if (!formUrl) return res.status(400).json({ message: 'กรุณาระบุ URL ของ Google Form' });
 
   const tokens = getTokens(state);
-  if (!tokens) return res.status(401).json({ message: 'Google auth expired — please authorize again' });
+  if (!tokens) {
+    return res.status(401).json({ message: 'Google auth expired — please authorize again' });
+  }
+
+  if (/\/forms\/d\/e\//.test(formUrl)) {
+    return res.status(400).json({
+      message:
+        'ลิงก์นี้เป็นลิงก์สำหรับตอบแบบสอบถาม (viewform) ซึ่งไม่สามารถใช้นำเข้าได้ กรุณาเปิดฟอร์มในโหมดแก้ไข แล้วคัดลอก URL จากแถบที่อยู่ (ต้องมีรูปแบบ .../forms/d/FORM_ID/edit)',
+    });
+  }
 
   const formId = extractFormId(formUrl);
   if (!formId) return res.status(400).json({ message: 'Google Forms URL ไม่ถูกต้อง' });
@@ -229,57 +350,88 @@ router.post('/import-form', async (req, res) => {
 
     const token = randomBytes(32).toString('hex');
     const [result] = await db.query(
-      'INSERT INTO surveys (user_id, title, description, status, share_token, google_form_url, google_form_id) VALUES (?,?,?,?,?,?,?)',
-      [req.user.id, form.info?.title || 'Imported Survey', form.info?.description || '', 'draft', token,
-       `https://docs.google.com/forms/d/${formId}/viewform`, formId]
+      `INSERT INTO surveys
+         (user_id, title, description, status, share_token, google_form_url, google_form_id)
+       VALUES (?,?,?,?,?,?,?)`,
+      [
+        req.user.id,
+        form.info?.title || 'Imported Survey',
+        form.info?.description || '',
+        'draft',
+        token,
+        `https://docs.google.com/forms/d/${formId}/viewform`,
+        formId,
+      ]
     );
     const surveyId = result.insertId;
 
     const qIdMap = {};
     for (const [idx, item] of (form.items || []).entries()) {
+      if (item.questionGroupItem) {
+        const gi = item.questionGroupItem;
+        const isCheckbox = gi.grid?.columns?.type === 'CHECKBOX';
+        const type = isCheckbox ? 'cbgrid' : 'mcgrid';
+        const cols = (gi.grid?.columns?.options || []).map(o => o.value).filter(Boolean);
+        const rows = (gi.questions || []).map(rq => rq.rowQuestion?.title || '');
+        const required = (gi.questions || []).some(rq => rq.required);
+        const [qResult] = await db.query(
+          `INSERT INTO questions
+             (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
+           VALUES (?,?,?,?,?,?,?)`,
+          [surveyId, 1, idx + 1, item.title || '', type, required ? 1 : 0, JSON.stringify({ rows, cols })]
+        );
+        for (const rq of gi.questions || []) {
+          if (rq.questionId) {
+            qIdMap[rq.questionId] = {
+              localId: qResult.insertId,
+              type,
+              isGridRow: true,
+              rowLabel: rq.rowQuestion?.title || '',
+              cols,
+            };
+          }
+        }
+        continue;
+      }
+
       const googleQId = item.questionItem?.question?.questionId;
       const q = fromGoogleItem(item, idx + 1);
       const [qResult] = await db.query(
-        'INSERT INTO questions (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json) VALUES (?,?,?,?,?,?,?)',
-        [surveyId, q.section, q.order, q.text, q.type, q.required ? 1 : 0, q.options ? JSON.stringify(q.options) : null]
+        `INSERT INTO questions
+           (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
+         VALUES (?,?,?,?,?,?,?)`,
+        [
+          surveyId,
+          q.section,
+          q.order,
+          q.text,
+          q.type,
+          q.required ? 1 : 0,
+          q.options ? JSON.stringify(q.options) : null,
+        ]
       );
-      if (googleQId) qIdMap[googleQId] = { localId: qResult.insertId, type: q.type };
+      if (googleQId) qIdMap[googleQId] = { localId: qResult.insertId, type: q.type, options: q.options };
     }
 
     let responseCount = 0;
     try {
       const { data: respData } = await forms.forms.responses.list({ formId });
-      for (const resp of (respData.responses || [])) {
+      for (const resp of respData.responses || []) {
+        const { finalAnswers, overall } = extractResponseAnswers(resp, qIdMap);
+
         const [rResult] = await db.query(
-          'INSERT INTO responses (survey_id, respondent_name, submitted_at) VALUES (?,?,?)',
-          [surveyId, resp.respondentEmail || 'Google Forms', resp.createTime ? new Date(resp.createTime) : new Date()]
+          'INSERT INTO responses (survey_id, respondent_name, overall_score, submitted_at, google_response_id) VALUES (?,?,?,?,?)',
+          [
+            surveyId,
+            resp.respondentEmail || 'Google Forms',
+            overall,
+            resp.createTime ? new Date(resp.createTime) : new Date(),
+            resp.responseId || null,
+          ]
         );
         const responseId = rResult.insertId;
 
-        const vals = [];
-        for (const [googleQId, ans] of Object.entries(resp.answers || {})) {
-          const qInfo = qIdMap[googleQId];
-          if (!qInfo) continue;
-          const values = (ans.textAnswers?.answers || []).map(a => a.value).filter(Boolean);
-
-          let answerText = null, answerJson = null, score = null;
-          if (qInfo.type === 'checkbox') {
-            answerText = values.join(', ');
-            answerJson = JSON.stringify({ values });
-          } else if (['scale', 'star'].includes(qInfo.type)) {
-            const n = parseFloat(values[0]);
-            if (!isNaN(n)) { score = n; answerJson = JSON.stringify({ score: n }); }
-            answerText = values[0] || null;
-          } else {
-            answerText = values[0] || null;
-            if (['radio', 'dropdown'].includes(qInfo.type)) {
-              answerJson = JSON.stringify({ value: answerText });
-              const m = (answerText || '').match(/\((\d+(?:\.\d+)?)\)\s*$/);
-              if (m) score = parseFloat(m[1]);
-            }
-          }
-          vals.push([responseId, qInfo.localId, answerText, answerJson, score]);
-        }
+        const vals = finalAnswers.map(a => [responseId, a.localId, a.answerText, a.answerJson, a.score]);
         if (vals.length) {
           await db.query(
             'INSERT INTO response_answers (response_id, question_id, answer_text, answer_json, score) VALUES ?',
@@ -293,15 +445,249 @@ router.post('/import-form', async (req, res) => {
     }
 
     removeTokens(state);
-    res.json({ surveyId, title: form.info?.title || 'Imported Survey', questionCount: Object.keys(qIdMap).length, responseCount });
+    res.json({
+      surveyId,
+      title: form.info?.title || 'Imported Survey',
+      questionCount: Object.keys(qIdMap).length,
+      responseCount,
+    });
   } catch (e) {
     console.error('Google Forms import error:', e.message);
     if (e.code === 403 || e.status === 403) {
-      return res.status(403).json({ message: 'ไม่มีสิทธิ์เข้าถึง Google Form นี้ — ตรวจสอบว่าคุณเป็นเจ้าของฟอร์ม' });
+      return res.status(403).json({
+        message: 'ไม่มีสิทธิ์เข้าถึง Google Form นี้ — ตรวจสอบว่าคุณเป็นเจ้าของฟอร์ม',
+      });
     }
     res.status(500).json({ message: 'ไม่สามารถนำเข้า Google Form ได้ กรุณาลองใหม่' });
   }
 });
+
+// GET /api/google/sync-auth-url — same scopes as import, for the "sync now" popup flow
+router.get('/sync-auth-url', (req, res) => {
+  const state = Math.random().toString(36).substring(2, 12);
+  registerPendingState(state);
+  const client = getClient();
+  const url = client.generateAuthUrl({
+    access_type: 'offline',
+    scope: [
+      'https://www.googleapis.com/auth/forms.body.readonly',
+      'https://www.googleapis.com/auth/forms.responses.readonly',
+    ],
+    state,
+    prompt: 'consent',
+  });
+  res.json({ url, state });
+});
+
+// POST /api/google/sync-responses — pull latest responses for an already-linked survey
+router.post('/sync-responses', async (req, res) => {
+  const { state, surveyId } = req.body;
+  if (!surveyId) return res.status(400).json({ message: 'surveyId is required' });
+
+  const tokens = getTokens(state);
+  if (!tokens) {
+    return res.status(401).json({ message: 'Google auth expired — please authorize again' });
+  }
+
+  try {
+    const [[survey]] = await db.query(
+      'SELECT id, google_form_id FROM surveys WHERE id = ? AND user_id = ?',
+      [surveyId, req.user.id]
+    );
+    if (!survey) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    if (!survey.google_form_id) {
+      return res.status(400).json({ message: 'แบบสอบถามนี้ยังไม่ได้เชื่อมกับ Google Form' });
+    }
+    const formId = survey.google_form_id;
+
+    const client = getClient();
+    client.setCredentials(tokens);
+    const forms = google.forms({ version: 'v1', auth: client });
+
+    // Local questions in the same order they were sent to Google, so we can
+    // line them up positionally with the live form's items (no Google question
+    // ID is stored locally at creation time).
+    const [localQuestions] = await db.query(
+      'SELECT id, question_type, options_json FROM questions WHERE survey_id = ? ORDER BY section_number, sort_order',
+      [surveyId]
+    );
+
+    const { data: form } = await forms.forms.get({ formId });
+
+    const qIdMap = {};
+    let qPtr = 0;
+    for (const item of form.items || []) {
+      if (item.questionGroupItem) {
+        for (const rq of item.questionGroupItem.questions || []) {
+          const local = localQuestions[qPtr++];
+          if (local && rq.questionId) {
+            const opts = parseJsonSafe(local.options_json) || {};
+            qIdMap[rq.questionId] = {
+              localId: local.id,
+              type: local.question_type,
+              isGridRow: true,
+              rowLabel: rq.rowQuestion?.title || '',
+              cols: Array.isArray(opts.cols) ? opts.cols : [],
+            };
+          }
+        }
+        continue;
+      }
+      const googleQId = item.questionItem?.question?.questionId;
+      const local = localQuestions[qPtr++];
+      if (googleQId && local) {
+        qIdMap[googleQId] = {
+          localId: local.id,
+          type: local.question_type,
+          options: parseJsonSafe(local.options_json),
+        };
+      }
+    }
+
+    const { data: respData } = await forms.forms.responses.list({ formId });
+    let synced = 0,
+      skipped = 0;
+
+    for (const resp of respData.responses || []) {
+      if (!resp.responseId) continue;
+
+      const [existing] = await db.query(
+        'SELECT id FROM responses WHERE survey_id = ? AND google_response_id = ?',
+        [surveyId, resp.responseId]
+      );
+      if (existing.length) {
+        skipped++;
+        continue;
+      }
+
+      const { finalAnswers, overall } = extractResponseAnswers(resp, qIdMap);
+
+      const [rResult] = await db.query(
+        'INSERT INTO responses (survey_id, respondent_name, overall_score, submitted_at, google_response_id) VALUES (?,?,?,?,?)',
+        [
+          surveyId,
+          resp.respondentEmail || 'Google Forms',
+          overall,
+          resp.createTime ? new Date(resp.createTime) : new Date(),
+          resp.responseId,
+        ]
+      );
+      const responseId = rResult.insertId;
+
+      const vals = finalAnswers.map(a => [responseId, a.localId, a.answerText, a.answerJson, a.score]);
+      if (vals.length) {
+        await db.query(
+          'INSERT INTO response_answers (response_id, question_id, answer_text, answer_json, score) VALUES ?',
+          [vals]
+        );
+      }
+      synced++;
+    }
+
+    removeTokens(state);
+    res.json({ ok: true, synced, skipped });
+  } catch (e) {
+    console.error('Google Forms sync error:', e.message);
+    if (e.code === 403 || e.status === 403) {
+      return res.status(403).json({
+        message: 'ไม่มีสิทธิ์เข้าถึง Google Form นี้ — ตรวจสอบว่าคุณเป็นเจ้าของฟอร์ม',
+      });
+    }
+    res.status(500).json({ message: 'ไม่สามารถซิงค์คำตอบได้ กรุณาลองใหม่' });
+  }
+});
+
+function parseJsonSafe(v) {
+  if (!v) return null;
+  if (typeof v !== 'string') return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return null;
+  }
+}
+
+// Groups a Google Forms API response's raw per-question answers into the
+// per-local-question shape (`response_answers` rows) plus an overall score.
+function extractResponseAnswers(resp, qIdMap) {
+  const grouped = {};
+  for (const [googleQId, ans] of Object.entries(resp.answers || {})) {
+    const qInfo = qIdMap[googleQId];
+    if (!qInfo) continue;
+    const values = (ans.textAnswers?.answers || []).map(a => a.value).filter(Boolean);
+
+    if (qInfo.isGridRow) {
+      const g = (grouped[qInfo.localId] ??= {
+        isGrid: true,
+        type: qInfo.type,
+        cols: qInfo.cols,
+        rows: {},
+      });
+      g.rows[qInfo.rowLabel] = qInfo.type === 'cbgrid' ? values : values[0] || null;
+      continue;
+    }
+
+    let answerText = null,
+      answerJson = null,
+      score = null;
+    if (qInfo.type === 'checkbox') {
+      answerText = values.join(', ');
+      answerJson = JSON.stringify({ values });
+    } else if (['scale', 'star'].includes(qInfo.type)) {
+      const n = parseFloat(values[0]);
+      if (!isNaN(n)) {
+        score = n;
+        answerJson = JSON.stringify({ score: n });
+      }
+      answerText = values[0] || null;
+    } else {
+      answerText = values[0] || null;
+      if (['radio', 'dropdown'].includes(qInfo.type)) {
+        answerJson = JSON.stringify({ value: answerText });
+        const m = (answerText || '').match(/\((\d+(?:\.\d+)?)\)\s*$/);
+        if (m) {
+          score = parseFloat(m[1]);
+        } else if (Array.isArray(qInfo.options) && qInfo.options.length > 1) {
+          const idx = qInfo.options.indexOf(answerText);
+          if (idx !== -1) score = idx + 1;
+        }
+      }
+    }
+    grouped[qInfo.localId] = { isGrid: false, answerText, answerJson, score };
+  }
+
+  const finalAnswers = [];
+  for (const [localId, g] of Object.entries(grouped)) {
+    if (g.isGrid) {
+      const rowEntries = Object.entries(g.rows);
+      const answerJson = JSON.stringify(g.rows);
+      const answerText = rowEntries
+        .map(([r, v]) => `${r}: ${Array.isArray(v) ? v.join('/') : v}`)
+        .join('; ');
+      let score = null;
+      if (g.type === 'mcgrid' && Array.isArray(g.cols) && g.cols.length > 1) {
+        const rowScores = rowEntries
+          .map(([, v]) => g.cols.indexOf(v))
+          .filter(i => i !== -1)
+          .map(i => i + 1);
+        if (rowScores.length) score = rowScores.reduce((a, b) => a + b, 0) / rowScores.length;
+      }
+      finalAnswers.push({ localId: Number(localId), answerText, answerJson, score });
+    } else {
+      finalAnswers.push({
+        localId: Number(localId),
+        answerText: g.answerText,
+        answerJson: g.answerJson,
+        score: g.score,
+      });
+    }
+  }
+
+  const scores = finalAnswers.map(a => a.score).filter(s => s != null && !isNaN(s));
+  const overall = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+
+  return { finalAnswers, overall };
+}
 
 function extractFormId(url) {
   if (!url) return null;
@@ -312,7 +698,14 @@ function extractFormId(url) {
 }
 
 function fromGoogleItem(item, idx) {
-  const q = { text: item.title || '', section: 1, order: idx, type: 'short', required: false, options: null };
+  const q = {
+    text: item.title || '',
+    section: 1,
+    order: idx,
+    type: 'short',
+    required: false,
+    options: null,
+  };
   const qi = item.questionItem?.question;
   if (!qi) return q;
 
@@ -326,7 +719,12 @@ function fromGoogleItem(item, idx) {
     q.options = (qi.choiceQuestion.options || []).map(o => o.value).filter(Boolean);
   } else if (qi.scaleQuestion) {
     q.type = 'scale';
-    q.options = { min: qi.scaleQuestion.low ?? 1, max: qi.scaleQuestion.high ?? 5, min_label: qi.scaleQuestion.lowLabel || '', max_label: qi.scaleQuestion.highLabel || '' };
+    q.options = {
+      min: qi.scaleQuestion.low ?? 1,
+      max: qi.scaleQuestion.high ?? 5,
+      min_label: qi.scaleQuestion.lowLabel || '',
+      max_label: qi.scaleQuestion.highLabel || '',
+    };
   } else if (qi.ratingQuestion) {
     q.type = 'star';
     q.options = { max_stars: qi.ratingQuestion.ratingScaleLevel || 5 };
@@ -334,6 +732,8 @@ function fromGoogleItem(item, idx) {
     q.type = 'date';
   } else if (qi.timeQuestion) {
     q.type = 'time';
+  } else if (qi.fileUploadQuestion) {
+    q.type = 'file';
   }
 
   return q;
@@ -343,7 +743,10 @@ function toGoogleItem(q) {
   const title = q.text || 'คำถาม';
 
   if (q.type === 'short' || q.type === 'para') {
-    return { title, questionItem: { question: { required: false, textQuestion: { paragraph: q.type === 'para' } } } };
+    return {
+      title,
+      questionItem: { question: { required: false, textQuestion: { paragraph: q.type === 'para' } } },
+    };
   }
 
   if (q.type === 'radio' || q.type === 'checkbox' || q.type === 'dropdown') {
@@ -364,11 +767,21 @@ function toGoogleItem(q) {
   }
 
   if (q.type === 'scale') {
-    return { title, questionItem: { question: { required: false, scaleQuestion: { low: q.scaleMin ?? 1, high: q.scaleMax ?? 5 } } } };
+    return {
+      title,
+      questionItem: {
+        question: { required: false, scaleQuestion: { low: q.scaleMin ?? 1, high: q.scaleMax ?? 5 } },
+      },
+    };
   }
 
   if (q.type === 'star') {
-    return { title, questionItem: { question: { required: false, ratingQuestion: { ratingScaleLevel: 5, iconType: 'STAR' } } } };
+    return {
+      title,
+      questionItem: {
+        question: { required: false, ratingQuestion: { ratingScaleLevel: 5, iconType: 'STAR' } },
+      },
+    };
   }
 
   if (q.type === 'date') {

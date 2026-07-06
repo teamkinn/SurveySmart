@@ -72,22 +72,22 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import api from '@/api';
 
-const router    = useRouter();
+const router = useRouter();
 const authStore = useAuthStore();
 const showToast = inject('showToast');
 
-const tab        = ref('login');
-const busy       = ref(false);
-const error      = ref('');
+const tab = ref('login');
+const busy = ref(false);
+const error = ref('');
 const forgotEmail = ref('');
-const forgotMsg  = ref('');
+const forgotMsg = ref('');
 
 const login = ref({ identifier: '', password: '' });
-const reg   = ref({ first_name: '', last_name: '', username: '', email: '', password: '', confirm_password: '' });
+const reg = ref({ first_name: '', last_name: '', username: '', email: '', password: '', confirm_password: '' });
 
 async function doLogin() {
   error.value = '';
-  busy.value  = true;
+  busy.value = true;
   try {
     await authStore.login(login.value.identifier, login.value.password);
     showToast('ยินดีต้อนรับ! 👋');
@@ -118,7 +118,7 @@ async function doRegister() {
     error.value = 'รหัสผ่านไม่ตรงกัน กรุณากรอกใหม่';
     return;
   }
-  busy.value  = true;
+  busy.value = true;
   try {
     await authStore.register(reg.value);
     showToast('สร้างบัญชีเรียบร้อย ยินดีต้อนรับ! 🎉');

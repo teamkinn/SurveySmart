@@ -264,23 +264,23 @@ import QRCode from 'qrcode';
 import api from '@/api';
 import { useSurveyStore } from '@/stores/surveys';
 
-const emit        = defineEmits(['created']);
-const showToast   = inject('showToast');
+const emit = defineEmits(['created']);
+const showToast = inject('showToast');
 const surveyStore = useSurveyStore();
 
-const isOpen       = ref(false);
-const currentStep  = ref(1);
+const isOpen = ref(false);
+const currentStep = ref(1);
 const openPickerId = ref(null);
-const dragOverId   = ref(null);
-let   dragSrc      = { sec: null, id: null };
+const dragOverId = ref(null);
+let dragSrc = { sec: null, id: null };
 
 const form = ref({ title: '', description: '', closeDate: '' });
 
 // Google Forms state
-const gfPhase    = ref('preview');
-const gfFormUrl  = ref('');
+const gfPhase = ref('preview');
+const gfFormUrl = ref('');
 const gfQrDataUrl = ref('');
-const gfError    = ref('');
+const gfError = ref('');
 
 const sectionNames = [
   'ตอนที่ 1 — ข้อมูลส่วนตัว',
@@ -290,16 +290,16 @@ const sectionNames = [
 const steps = ['ตั้งค่าแบบสอบถาม', 'ตอน 1: ข้อมูลส่วนตัว', 'ตอน 2: ความพึงพอใจ', 'ตอน 3: ข้อเสนอแนะ', 'ตรวจสอบ & สร้าง'];
 
 const Q_TYPES = [
-  { value: 'short',    label: 'คำตอบสั้นๆ',       icon: '—'  },
-  { value: 'para',     label: 'ย่อหน้า',           icon: '≡'  },
-  { value: 'radio',    label: 'หลายตัวเลือก',      icon: '◉'  },
+  { value: 'short', label: 'คำตอบสั้นๆ', icon: '—'  },
+  { value: 'para', label: 'ย่อหน้า', icon: '≡'  },
+  { value: 'radio', label: 'หลายตัวเลือก', icon: '◉'  },
   { value: 'checkbox', label: 'ช่องทำเครื่องหมาย', icon: '☑'  },
-  { value: 'dropdown', label: 'เลื่อนลง',          icon: '⌄'  },
-  { value: 'file',     label: 'อัปโหลดไฟล์',       icon: '↑'  },
-  { value: 'scale',    label: 'สเกลเชิงเส้น',      icon: '↔'  },
-  { value: 'star',     label: 'คะแนน (ดาว)',        icon: '☆'  },
-  { value: 'date',     label: 'วันที่',             icon: '📅' },
-  { value: 'time',     label: 'เวลา',               icon: '⏰' },
+  { value: 'dropdown', label: 'เลื่อนลง', icon: '⌄'  },
+  { value: 'file', label: 'อัปโหลดไฟล์', icon: '↑'  },
+  { value: 'scale', label: 'สเกลเชิงเส้น', icon: '↔'  },
+  { value: 'star', label: 'คะแนน (ดาว)', icon: '☆'  },
+  { value: 'date', label: 'วันที่', icon: '📅' },
+  { value: 'time', label: 'เวลา', icon: '⏰' },
 ];
 
 function typeIcon(val)  { return Q_TYPES.find(t => t.value === val)?.icon  ?? '—'; }
@@ -329,7 +329,7 @@ function makeDefaults() {
   qId = 0;
   sec1.value = [
     mkQ('short', 'ชื่อ-นามสกุล'),
-    mkQ('radio',  'เพศ', ['ชาย', 'หญิง', 'ไม่ระบุ']),
+    mkQ('radio', 'เพศ', ['ชาย', 'หญิง', 'ไม่ระบุ']),
   ];
   sec2.value = [
     mkQ('radio', 'ท่านมีความพึงพอใจต่อการให้บริการโดยรวมในระดับใด',
@@ -362,7 +362,7 @@ function onDrop(e, sec, targetId) {
   if (dragSrc.id === targetId || dragSrc.sec !== sec) return;
   const list = [...getSection(sec)];
   const from = list.findIndex(q => q.id === dragSrc.id);
-  const to   = list.findIndex(q => q.id === targetId);
+  const to = list.findIndex(q => q.id === targetId);
   if (from < 0 || to < 0) return;
   const [item] = list.splice(from, 1);
   list.splice(to, 0, item);
@@ -372,10 +372,10 @@ function onDrop(e, sec, targetId) {
 // ── Navigation ────────────────────────────────────────────────
 function open() {
   form.value = { title: '', description: '', closeDate: '' };
-  gfPhase.value    = 'preview';
-  gfFormUrl.value  = '';
+  gfPhase.value = 'preview';
+  gfFormUrl.value = '';
   gfQrDataUrl.value = '';
-  gfError.value    = '';
+  gfError.value = '';
   makeDefaults();
   currentStep.value = 1;
   isOpen.value = true;
@@ -398,8 +398,8 @@ function stepNext() {
     showToast('กรุณากรอกชื่อแบบสอบถาม'); return;
   }
   if (currentStep.value === 4) {
-    gfPhase.value    = 'preview';
-    gfError.value    = '';
+    gfPhase.value = 'preview';
+    gfError.value = '';
   }
   currentStep.value++;
 }
@@ -452,7 +452,7 @@ async function submitToGoogle(state) {
         sec3:        sec3.value,
       },
     });
-    gfFormUrl.value   = data.formUrl;
+    gfFormUrl.value = data.formUrl;
     gfQrDataUrl.value = await QRCode.toDataURL(data.formUrl, { width: 256, margin: 2 });
 
     // Save survey to SurveySmart with Google Form URL
@@ -481,7 +481,7 @@ async function submitToGoogle(state) {
 
 function saveQR() {
   const a = document.createElement('a');
-  a.href     = gfQrDataUrl.value;
+  a.href = gfQrDataUrl.value;
   a.download = `${form.value.title || 'google-form'}-qr.png`;
   a.click();
 }

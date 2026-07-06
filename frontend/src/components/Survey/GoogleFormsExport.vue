@@ -100,24 +100,24 @@ import api from '@/api';
 
 const emit = defineEmits(['close']);
 
-const isOpen    = ref(false);
-const phase     = ref('preview');
-const survey    = ref({ title: '', description: '', sec1: [], sec2: [], sec3: [] });
-const formUrl   = ref('');
+const isOpen = ref(false);
+const phase = ref('preview');
+const survey = ref({ title: '', description: '', sec1: [], sec2: [], sec3: [] });
+const formUrl = ref('');
 const qrDataUrl = ref('');
-const errorMsg  = ref('');
+const errorMsg = ref('');
 
 const Q_TYPES = [
-  { value: 'short',    label: 'คำตอบสั้นๆ' },
-  { value: 'para',     label: 'ย่อหน้า' },
-  { value: 'radio',    label: 'หลายตัวเลือก' },
+  { value: 'short', label: 'คำตอบสั้นๆ' },
+  { value: 'para', label: 'ย่อหน้า' },
+  { value: 'radio', label: 'หลายตัวเลือก' },
   { value: 'checkbox', label: 'ช่องทำเครื่องหมาย' },
   { value: 'dropdown', label: 'เลื่อนลง' },
-  { value: 'file',     label: 'อัปโหลดไฟล์' },
-  { value: 'scale',    label: 'สเกลเชิงเส้น' },
-  { value: 'star',     label: 'คะแนน (ดาว)' },
-  { value: 'date',     label: 'วันที่' },
-  { value: 'time',     label: 'เวลา' },
+  { value: 'file', label: 'อัปโหลดไฟล์' },
+  { value: 'scale', label: 'สเกลเชิงเส้น' },
+  { value: 'star', label: 'คะแนน (ดาว)' },
+  { value: 'date', label: 'วันที่' },
+  { value: 'time', label: 'เวลา' },
 ];
 
 const allQuestions = computed(() => [
@@ -135,10 +135,10 @@ function needsOpts(t)   { return ['radio', 'checkbox', 'dropdown'].includes(t); 
 
 function open(surveyData) {
   survey.value = surveyData;
-  phase.value  = 'preview';
-  formUrl.value   = '';
+  phase.value = 'preview';
+  formUrl.value = '';
   qrDataUrl.value = '';
-  errorMsg.value  = '';
+  errorMsg.value = '';
   isOpen.value = true;
 }
 
@@ -182,18 +182,18 @@ async function createForm(state) {
   phase.value = 'creating';
   try {
     const { data } = await api.post('/google/create-form', { state, survey: survey.value });
-    formUrl.value   = data.formUrl;
+    formUrl.value = data.formUrl;
     qrDataUrl.value = await QRCode.toDataURL(data.formUrl, { width: 240, margin: 2 });
-    phase.value     = 'done';
+    phase.value = 'done';
   } catch (e) {
     errorMsg.value = e.response?.data?.message || 'สร้าง Google Form ไม่สำเร็จ';
-    phase.value    = 'error';
+    phase.value = 'error';
   }
 }
 
 function saveQR() {
   const a = document.createElement('a');
-  a.href     = qrDataUrl.value;
+  a.href = qrDataUrl.value;
   a.download = `${survey.value.title || 'google-form'}-qr.png`;
   a.click();
 }

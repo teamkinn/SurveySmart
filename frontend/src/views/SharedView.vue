@@ -74,16 +74,16 @@ import { ref, computed, onMounted, inject } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
 import { useAuthStore }   from '@/stores/auth';
 
-const surveyStore  = useSurveyStore();
-const authStore    = useAuthStore();
-const showToast    = inject('showToast');
-const search       = ref('');
+const surveyStore = useSurveyStore();
+const authStore = useAuthStore();
+const showToast = inject('showToast');
+const search = ref('');
 const statusFilter = ref('');
-const isAdmin      = computed(() => authStore.user?.role === 'admin');
+const isAdmin = computed(() => authStore.user?.role === 'admin');
 
 const filtered = computed(() =>
   surveyStore.others.filter(s => {
-    const q  = search.value.toLowerCase();
+    const q = search.value.toLowerCase();
     const ok = !q || s.title.toLowerCase().includes(q);
     const st = !statusFilter.value || s.status === statusFilter.value;
     return ok && st;

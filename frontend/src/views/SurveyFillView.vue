@@ -137,17 +137,17 @@ import { ref, reactive, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 
-const route     = useRoute();
-const baseURL   = import.meta.env.VITE_API_URL || '/api';
-const api       = axios.create({ baseURL });
+const route = useRoute();
+const baseURL = import.meta.env.VITE_API_URL || '/api';
+const api = axios.create({ baseURL });
 
-const loading       = ref(true);
-const survey        = ref(null);
-const submitted     = ref(false);
-const busy          = ref(false);
-const error         = ref('');
+const loading = ref(true);
+const survey = ref(null);
+const submitted = ref(false);
+const busy = ref(false);
+const error = ref('');
 const respondentName = ref('');
-const answers       = reactive({});
+const answers = reactive({});
 
 function parseOpts(o) {
   if (!o) return [];

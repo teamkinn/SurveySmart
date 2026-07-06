@@ -1,16 +1,18 @@
 const { google } = require('googleapis');
 
-const tokenStore   = new Map();
+const tokenStore = new Map();
 const pendingStates = new Set();
 
 function getClient() {
+  console.log("CLIENT_ID =", process.env.GOOGLE_CLIENT_ID);
+  console.log("REDIRECT =", process.env.GOOGLE_REDIRECT_URI);
+
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback'
+    process.env.GOOGLE_REDIRECT_URI
   );
 }
-
 function registerPendingState(state) {
   pendingStates.add(state);
   // Auto-expire after 10 minutes so the Set doesn't grow forever
@@ -24,8 +26,21 @@ function verifyPendingState(state) {
   return true;
 }
 
-function storeTokens(state, tokens)  { tokenStore.set(state, tokens); }
-function getTokens(state)            { return tokenStore.get(state); }
-function removeTokens(state)         { tokenStore.delete(state); }
+function storeTokens(state, tokens) {
+  tokenStore.set(state, tokens);
+}
+function getTokens(state) {
+  return tokenStore.get(state);
+}
+function removeTokens(state) {
+  tokenStore.delete(state);
+}
 
-module.exports = { getClient, registerPendingState, verifyPendingState, storeTokens, getTokens, removeTokens };
+module.exports = {
+  getClient,
+  registerPendingState,
+  verifyPendingState,
+  storeTokens,
+  getTokens,
+  removeTokens,
+};

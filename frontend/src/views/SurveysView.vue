@@ -122,18 +122,18 @@ import { ref, computed, inject, onMounted } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
 
 const surveyStore = useSurveyStore();
-const showToast   = inject('showToast');
+const showToast = inject('showToast');
 
-const search       = ref('');
+const search = ref('');
 const statusFilter = ref('');
-const sortBy       = ref('newest');
-const shareModal   = ref({ open: false, surveyId: null, email: '' });
-const qrModal      = ref({ open: false, title: '', url: '', dataUrl: '' });
-const copied       = ref(false);
+const sortBy = ref('newest');
+const shareModal = ref({ open: false, surveyId: null, email: '' });
+const qrModal = ref({ open: false, title: '', url: '', dataUrl: '' });
+const copied = ref(false);
 
 const filtered = computed(() => {
   let result = surveyStore.list.filter(s => {
-    const matchQ  = !search.value || s.title.toLowerCase().includes(search.value.toLowerCase());
+    const matchQ = !search.value || s.title.toLowerCase().includes(search.value.toLowerCase());
     const matchSt = !statusFilter.value || s.status === statusFilter.value;
     return matchQ && matchSt;
   });

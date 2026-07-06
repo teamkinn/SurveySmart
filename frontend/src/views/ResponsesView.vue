@@ -259,16 +259,16 @@ import { useSurveyStore } from '@/stores/surveys';
 import { useAuthStore }   from '@/stores/auth';
 import api from '@/api';
 
-const route       = useRoute();
+const route = useRoute();
 const surveyStore = useSurveyStore();
-const authStore   = useAuthStore();
+const authStore = useAuthStore();
 const isAdminUser = computed(() => authStore.user?.role === 'admin');
-const responses   = ref([]);
-const charts      = ref([]);
-const activeTab   = ref('list');
+const responses = ref([]);
+const charts = ref([]);
+const activeTab = ref('list');
 
-const filterFrom   = ref('');
-const filterTo     = ref('');
+const filterFrom = ref('');
+const filterTo = ref('');
 const filterGender = ref('');
 
 const donutColors = ['#1a56a0', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#f97316'];
@@ -375,14 +375,14 @@ const scoreColorClass = computed(() => {
 });
 
 const comments = computed(() => filteredResponses.value.filter(r => r.note));
-const lastDate  = computed(() => responses.value.length ? formatDate(responses.value[0].submitted_at) : '—');
+const lastDate = computed(() => responses.value.length ? formatDate(responses.value[0].submitted_at) : '—');
 
 // SVG donut segments (circumference = 100 at r=15.9)
 function donutSegments(data, total) {
   if (!total) return [];
   let cumulative = 0;
   return data.map((d, i) => {
-    const pct    = (d.count / total) * 100;
+    const pct = (d.count / total) * 100;
     const offset = 25 - cumulative; // 25 = shift start to 12 o'clock
     cumulative  += pct;
     return { pct, offset, color: donutColors[i % donutColors.length], label: d.label };
@@ -402,10 +402,10 @@ function exportCSV() {
   filteredResponses.value.forEach((r, i) => {
     rows.push([i + 1, r.respondent_name || '', r.overall_score != null ? parseFloat(r.overall_score).toFixed(1) : '', formatDate(r.submitted_at), r.note || '']);
   });
-  const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
   a.href = url; a.download = `${survey.value?.title || 'responses'}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
