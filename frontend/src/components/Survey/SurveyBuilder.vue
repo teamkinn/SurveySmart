@@ -418,6 +418,7 @@ async function createGoogleForm() {
     const popup = window.open(data.url, 'google-auth', 'width=520,height=620,scrollbars=yes');
 
     const onMessage = async (event) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data?.type !== 'google-oauth-done') return;
       window.removeEventListener('message', onMessage);
       clearInterval(closedCheck);

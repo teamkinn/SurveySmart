@@ -83,13 +83,14 @@ exports.login = async (req, res) => {
       'SELECT * FROM users WHERE email = ? OR username = ?',
       [identifier, identifier]
     );
-    if (!rows.length)
-      return res.status(401).json({ message: 'ไม่พบผู้ใช้งานนี้' });
+    // Same message whether the identifier doesn't exist or the password is
+    // wrong — distinguishing them lets an attacker enumerate valid accounts.
+    const invalidCredentials = () => res.status(401).json({ message: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
+    if (!rows.length) return invalidCredentials();
 
     const user = rows[0];
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid)
-      return res.status(401).json({ message: 'รหัสผ่านไม่ถูกต้อง' });
+    if (!valid) return invalidCredentials();
 
     const { password: _p, ...safe } = user;
     res.json({ token: signToken(user), user: safe });

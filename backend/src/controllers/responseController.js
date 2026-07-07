@@ -1,11 +1,28 @@
 const db = require('../config/db');
 
+// Owner, admin, or a user the survey was explicitly shared with (survey_shares)
+// may view a survey's responses/stats/charts — anyone else must be rejected.
+async function canAccessSurvey(surveyId, user) {
+  if (user.role === 'admin') {
+    const [[s]] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
+    return !!s;
+  }
+  const [[s]] = await db.query(
+    `SELECT s.id FROM surveys s
+     LEFT JOIN survey_shares sh ON sh.survey_id = s.id AND sh.shared_with_id = ?
+     WHERE s.id = ? AND (s.user_id = ? OR sh.id IS NOT NULL)`,
+    [user.id, surveyId, user.id]
+  );
+  return !!s;
+}
+
 exports.list = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
 
-    const [chk] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
-    if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    if (!(await canAccessSurvey(surveyId, req.user))) {
+      return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    }
 
     const [rows] = await db.query(
       `SELECT r.*,
@@ -47,6 +64,32 @@ exports.submit = async (req, res) => {
       [surveyId]
     );
     if (!survey) return res.status(403).json({ message: 'แบบสอบถามนี้ปิดรับคำตอบแล้ว' });
+
+    // Required-question validation — the frontend already enforces this, but
+    // the API must not trust the client; anyone can POST here directly with
+    // required answers omitted.
+    const [requiredQuestions] = await conn.query(
+      'SELECT id FROM questions WHERE survey_id = ? AND is_required = 1',
+      [surveyId]
+    );
+    if (requiredQuestions.length) {
+      const answerByQuestionId = new Map(answers.map(a => [a.question_id, a]));
+      const hasAnswer = a => {
+        if (!a) return false;
+        if (a.answer_text && String(a.answer_text).trim()) return true;
+        if (a.score !== undefined && a.score !== null && a.score !== '' && !isNaN(parseFloat(a.score))) return true;
+        const j = a.answer_json;
+        if (j && ((Array.isArray(j.values) && j.values.length) || j.value || (j.score !== undefined && j.score !== null))) {
+          return true;
+        }
+        return false;
+      };
+      const missing = requiredQuestions.some(q => !hasAnswer(answerByQuestionId.get(q.id)));
+      if (missing) {
+        await conn.rollback();
+        return res.status(400).json({ message: 'กรุณาตอบคำถามที่จำเป็นให้ครบถ้วน' });
+      }
+    }
 
     // Input length guard
     const name = (respondent_name || 'ไม่ระบุ').slice(0, 200);
@@ -90,8 +133,9 @@ exports.submit = async (req, res) => {
 exports.chartData = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
-    const [chk] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
-    if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    if (!(await canAccessSurvey(surveyId, req.user))) {
+      return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    }
 
     const [questions] = await db.query(
       `SELECT id, question_text, question_type, options_json
@@ -198,6 +242,10 @@ exports.chartData = async (req, res) => {
 exports.stats = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
+
+    if (!(await canAccessSurvey(surveyId, req.user))) {
+      return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    }
 
     const [[summary]] = await db.query(
       `SELECT COUNT(*) AS total, ROUND(AVG(overall_score),2) AS avg_score, MAX(submitted_at) AS last_at

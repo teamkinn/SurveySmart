@@ -4,13 +4,10 @@ const tokenStore = new Map();
 const pendingStates = new Set();
 
 function getClient() {
-  console.log("CLIENT_ID =", process.env.GOOGLE_CLIENT_ID);
-  console.log("REDIRECT =", process.env.GOOGLE_REDIRECT_URI);
-
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
+    process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback'
   );
 }
 function registerPendingState(state) {

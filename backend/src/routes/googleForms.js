@@ -9,6 +9,7 @@ const {
   getTokens,
   removeTokens,
 } = require('../services/googleAuth');
+const { pullFormResponses } = require('../services/googleFormsSync');
 
 router.use(auth);
 
@@ -373,12 +374,21 @@ router.post('/import-form', async (req, res) => {
         const type = isCheckbox ? 'cbgrid' : 'mcgrid';
         const cols = (gi.grid?.columns?.options || []).map(o => o.value).filter(Boolean);
         const rows = (gi.questions || []).map(rq => rq.rowQuestion?.title || '');
+        const rowQuestionIds = (gi.questions || []).map(rq => rq.questionId || null);
         const required = (gi.questions || []).some(rq => rq.required);
         const [qResult] = await db.query(
           `INSERT INTO questions
              (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
            VALUES (?,?,?,?,?,?,?)`,
-          [surveyId, 1, idx + 1, item.title || '', type, required ? 1 : 0, JSON.stringify({ rows, cols })]
+          [
+            surveyId,
+            1,
+            idx + 1,
+            item.title || '',
+            type,
+            required ? 1 : 0,
+            JSON.stringify({ rows, cols, rowQuestionIds }),
+          ]
         );
         for (const rq of gi.questions || []) {
           if (rq.questionId) {
@@ -398,8 +408,8 @@ router.post('/import-form', async (req, res) => {
       const q = fromGoogleItem(item, idx + 1);
       const [qResult] = await db.query(
         `INSERT INTO questions
-           (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
-         VALUES (?,?,?,?,?,?,?)`,
+           (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json, google_question_id)
+         VALUES (?,?,?,?,?,?,?,?)`,
         [
           surveyId,
           q.section,
@@ -408,6 +418,7 @@ router.post('/import-form', async (req, res) => {
           q.type,
           q.required ? 1 : 0,
           q.options ? JSON.stringify(q.options) : null,
+          googleQId || null,
         ]
       );
       if (googleQId) qIdMap[googleQId] = { localId: qResult.insertId, type: q.type, options: q.options };
@@ -415,33 +426,19 @@ router.post('/import-form', async (req, res) => {
 
     let responseCount = 0;
     try {
-      const { data: respData } = await forms.forms.responses.list({ formId });
-      for (const resp of respData.responses || []) {
-        const { finalAnswers, overall } = extractResponseAnswers(resp, qIdMap);
-
-        const [rResult] = await db.query(
-          'INSERT INTO responses (survey_id, respondent_name, overall_score, submitted_at, google_response_id) VALUES (?,?,?,?,?)',
-          [
-            surveyId,
-            resp.respondentEmail || 'Google Forms',
-            overall,
-            resp.createTime ? new Date(resp.createTime) : new Date(),
-            resp.responseId || null,
-          ]
-        );
-        const responseId = rResult.insertId;
-
-        const vals = finalAnswers.map(a => [responseId, a.localId, a.answerText, a.answerJson, a.score]);
-        if (vals.length) {
-          await db.query(
-            'INSERT INTO response_answers (response_id, question_id, answer_text, answer_json, score) VALUES ?',
-            [vals]
-          );
-        }
-        responseCount++;
-      }
+      const result = await pullFormResponses(forms, formId, surveyId);
+      responseCount = result.synced;
     } catch (respErr) {
       console.warn('Could not fetch Google Form responses:', respErr.message);
+    }
+
+    // Persist the refresh token (if Google issued one) so the background
+    // poller can pick up new responses automatically from here on.
+    if (tokens.refresh_token) {
+      await db.query('UPDATE surveys SET google_refresh_token = ?, last_synced_at = NOW() WHERE id = ?', [
+        tokens.refresh_token,
+        surveyId,
+      ]);
     }
 
     removeTokens(state);
@@ -504,85 +501,17 @@ router.post('/sync-responses', async (req, res) => {
     client.setCredentials(tokens);
     const forms = google.forms({ version: 'v1', auth: client });
 
-    // Local questions in the same order they were sent to Google, so we can
-    // line them up positionally with the live form's items (no Google question
-    // ID is stored locally at creation time).
-    const [localQuestions] = await db.query(
-      'SELECT id, question_type, options_json FROM questions WHERE survey_id = ? ORDER BY section_number, sort_order',
-      [surveyId]
-    );
+    const { synced, skipped } = await pullFormResponses(forms, formId, surveyId);
 
-    const { data: form } = await forms.forms.get({ formId });
-
-    const qIdMap = {};
-    let qPtr = 0;
-    for (const item of form.items || []) {
-      if (item.questionGroupItem) {
-        for (const rq of item.questionGroupItem.questions || []) {
-          const local = localQuestions[qPtr++];
-          if (local && rq.questionId) {
-            const opts = parseJsonSafe(local.options_json) || {};
-            qIdMap[rq.questionId] = {
-              localId: local.id,
-              type: local.question_type,
-              isGridRow: true,
-              rowLabel: rq.rowQuestion?.title || '',
-              cols: Array.isArray(opts.cols) ? opts.cols : [],
-            };
-          }
-        }
-        continue;
-      }
-      const googleQId = item.questionItem?.question?.questionId;
-      const local = localQuestions[qPtr++];
-      if (googleQId && local) {
-        qIdMap[googleQId] = {
-          localId: local.id,
-          type: local.question_type,
-          options: parseJsonSafe(local.options_json),
-        };
-      }
+    // Persist the refresh token (if Google issued one) so the background
+    // poller can keep pulling new responses without another manual sync.
+    if (tokens.refresh_token) {
+      await db.query('UPDATE surveys SET google_refresh_token = ? WHERE id = ?', [
+        tokens.refresh_token,
+        surveyId,
+      ]);
     }
-
-    const { data: respData } = await forms.forms.responses.list({ formId });
-    let synced = 0,
-      skipped = 0;
-
-    for (const resp of respData.responses || []) {
-      if (!resp.responseId) continue;
-
-      const [existing] = await db.query(
-        'SELECT id FROM responses WHERE survey_id = ? AND google_response_id = ?',
-        [surveyId, resp.responseId]
-      );
-      if (existing.length) {
-        skipped++;
-        continue;
-      }
-
-      const { finalAnswers, overall } = extractResponseAnswers(resp, qIdMap);
-
-      const [rResult] = await db.query(
-        'INSERT INTO responses (survey_id, respondent_name, overall_score, submitted_at, google_response_id) VALUES (?,?,?,?,?)',
-        [
-          surveyId,
-          resp.respondentEmail || 'Google Forms',
-          overall,
-          resp.createTime ? new Date(resp.createTime) : new Date(),
-          resp.responseId,
-        ]
-      );
-      const responseId = rResult.insertId;
-
-      const vals = finalAnswers.map(a => [responseId, a.localId, a.answerText, a.answerJson, a.score]);
-      if (vals.length) {
-        await db.query(
-          'INSERT INTO response_answers (response_id, question_id, answer_text, answer_json, score) VALUES ?',
-          [vals]
-        );
-      }
-      synced++;
-    }
+    await db.query('UPDATE surveys SET last_synced_at = NOW() WHERE id = ?', [surveyId]);
 
     removeTokens(state);
     res.json({ ok: true, synced, skipped });
@@ -596,98 +525,6 @@ router.post('/sync-responses', async (req, res) => {
     res.status(500).json({ message: 'ไม่สามารถซิงค์คำตอบได้ กรุณาลองใหม่' });
   }
 });
-
-function parseJsonSafe(v) {
-  if (!v) return null;
-  if (typeof v !== 'string') return v;
-  try {
-    return JSON.parse(v);
-  } catch {
-    return null;
-  }
-}
-
-// Groups a Google Forms API response's raw per-question answers into the
-// per-local-question shape (`response_answers` rows) plus an overall score.
-function extractResponseAnswers(resp, qIdMap) {
-  const grouped = {};
-  for (const [googleQId, ans] of Object.entries(resp.answers || {})) {
-    const qInfo = qIdMap[googleQId];
-    if (!qInfo) continue;
-    const values = (ans.textAnswers?.answers || []).map(a => a.value).filter(Boolean);
-
-    if (qInfo.isGridRow) {
-      const g = (grouped[qInfo.localId] ??= {
-        isGrid: true,
-        type: qInfo.type,
-        cols: qInfo.cols,
-        rows: {},
-      });
-      g.rows[qInfo.rowLabel] = qInfo.type === 'cbgrid' ? values : values[0] || null;
-      continue;
-    }
-
-    let answerText = null,
-      answerJson = null,
-      score = null;
-    if (qInfo.type === 'checkbox') {
-      answerText = values.join(', ');
-      answerJson = JSON.stringify({ values });
-    } else if (['scale', 'star'].includes(qInfo.type)) {
-      const n = parseFloat(values[0]);
-      if (!isNaN(n)) {
-        score = n;
-        answerJson = JSON.stringify({ score: n });
-      }
-      answerText = values[0] || null;
-    } else {
-      answerText = values[0] || null;
-      if (['radio', 'dropdown'].includes(qInfo.type)) {
-        answerJson = JSON.stringify({ value: answerText });
-        const m = (answerText || '').match(/\((\d+(?:\.\d+)?)\)\s*$/);
-        if (m) {
-          score = parseFloat(m[1]);
-        } else if (Array.isArray(qInfo.options) && qInfo.options.length > 1) {
-          const idx = qInfo.options.indexOf(answerText);
-          if (idx !== -1) score = idx + 1;
-        }
-      }
-    }
-    grouped[qInfo.localId] = { isGrid: false, answerText, answerJson, score };
-  }
-
-  const finalAnswers = [];
-  for (const [localId, g] of Object.entries(grouped)) {
-    if (g.isGrid) {
-      const rowEntries = Object.entries(g.rows);
-      const answerJson = JSON.stringify(g.rows);
-      const answerText = rowEntries
-        .map(([r, v]) => `${r}: ${Array.isArray(v) ? v.join('/') : v}`)
-        .join('; ');
-      let score = null;
-      if (g.type === 'mcgrid' && Array.isArray(g.cols) && g.cols.length > 1) {
-        const rowScores = rowEntries
-          .map(([, v]) => g.cols.indexOf(v))
-          .filter(i => i !== -1)
-          .map(i => i + 1);
-        if (rowScores.length) score = rowScores.reduce((a, b) => a + b, 0) / rowScores.length;
-      }
-      finalAnswers.push({ localId: Number(localId), answerText, answerJson, score });
-    } else {
-      finalAnswers.push({
-        localId: Number(localId),
-        answerText: g.answerText,
-        answerJson: g.answerJson,
-        score: g.score,
-      });
-    }
-  }
-
-  const scores = finalAnswers.map(a => a.score).filter(s => s != null && !isNaN(s));
-  const overall = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
-
-  return { finalAnswers, overall };
-}
 
 function extractFormId(url) {
   if (!url) return null;

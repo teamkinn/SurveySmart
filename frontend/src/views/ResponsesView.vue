@@ -7,6 +7,17 @@
         <div style="font-size:11px;color:var(--text3);">ผลการตอบกลับ</div>
       </div>
       <span v-if="isShared" style="font-size:11px;background:rgba(26,86,160,.08);color:var(--royal);border:1px solid rgba(26,86,160,.2);border-radius:20px;padding:3px 10px;font-weight:600;">👁️ View Only</span>
+      <span v-if="survey?.google_form_id && !isShared" style="font-size:11px;color:var(--text3);white-space:nowrap;">
+        <template v-if="survey.auto_sync_enabled">🟢 ซิงค์อัตโนมัติ</template>
+        <template v-else>⚪ ยังไม่เปิดซิงค์อัตโนมัติ</template>
+        <template v-if="survey.last_synced_at"> · ล่าสุด {{ formatDate(survey.last_synced_at) }}</template>
+      </span>
+      <button
+        v-if="survey?.google_form_id && !isShared"
+        class="btn-sm btn-outline"
+        :disabled="syncing"
+        @click="syncNow"
+      >{{ syncing ? '⟳ กำลังซิงค์...' : '🔄 ซิงค์ตอนนี้' }}</button>
       <span v-if="survey" class="survey-badge" :class="badgeClass(survey.status)">{{ badgeText(survey.status) }}</span>
     </div>
 
@@ -253,7 +264,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, inject } from 'vue';
 import { useRoute } from 'vue-router';
 import { useSurveyStore } from '@/stores/surveys';
 import { useAuthStore }   from '@/stores/auth';
@@ -262,10 +273,12 @@ import api from '@/api';
 const route = useRoute();
 const surveyStore = useSurveyStore();
 const authStore = useAuthStore();
+const showToast = inject('showToast');
 const isAdminUser = computed(() => authStore.user?.role === 'admin');
 const responses = ref([]);
 const charts = ref([]);
 const activeTab = ref('list');
+const syncing = ref(false);
 
 const filterFrom = ref('');
 const filterTo = ref('');
@@ -431,8 +444,7 @@ function interpText(avg) {
   return 'ควรปรับปรุง';
 }
 
-onMounted(async () => {
-  await surveyStore.fetchAll();
+async function loadResponses() {
   const [r1, r2] = await Promise.all([
     api.get(`/surveys/${route.params.id}/responses`),
     api.get(`/surveys/${route.params.id}/responses/chart-data`),
@@ -445,6 +457,70 @@ onMounted(async () => {
     const paraAns = answers.find(a => a.question_type === 'para' && a.answer_text);
     return { ...r, answers, note: paraAns?.answer_text || null };
   });
+}
+
+async function syncNow() {
+  if (syncing.value || !survey.value?.id) return;
+  // Captured now, at click time — `survey` is reactive and re-reading
+  // `survey.value.id` inside the async message handler below would pick up
+  // whatever survey the page has navigated to by the time the OAuth popup
+  // resolves, not the one the user actually clicked "sync" on.
+  const surveyId = survey.value.id;
+  syncing.value = true;
+  try {
+    const { data } = await api.get('/google/sync-auth-url');
+    const { url, state } = data;
+
+    const popup = window.open(url, 'google-auth', 'width=520,height=620,scrollbars=yes');
+    if (!popup) {
+      showToast?.('เบราว์เซอร์บล็อกป๊อปอัป กรุณาอนุญาตป๊อปอัปสำหรับเว็บไซต์นี้แล้วลองใหม่');
+      syncing.value = false;
+      return;
+    }
+    let popupHandled = false;
+
+    const onMessage = async (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'google-oauth-done') return;
+      popupHandled = true;
+      window.removeEventListener('message', onMessage);
+      if (popup && !popup.closed) popup.close();
+      try {
+        const { data: result } = await api.post('/google/sync-responses', {
+          state: event.data.state,
+          surveyId,
+        });
+        await Promise.all([loadResponses(), surveyStore.fetchAll()]);
+        showToast?.(`ซิงค์สำเร็จ — เพิ่ม ${result.synced} รายการ (ข้าม ${result.skipped} รายการที่มีอยู่แล้ว)`);
+      } catch (e) {
+        showToast?.(e.response?.data?.message || 'ซิงค์ไม่สำเร็จ');
+      } finally {
+        syncing.value = false;
+      }
+    };
+    window.addEventListener('message', onMessage);
+
+    // If the user closes the popup before authorizing, stop showing the
+    // "syncing" state — but not if we've already moved on to the sync-responses
+    // call (popup.close() there would otherwise falsely look like a cancel).
+    const checkClosed = setInterval(() => {
+      if (popup?.closed) {
+        clearInterval(checkClosed);
+        if (!popupHandled) {
+          window.removeEventListener('message', onMessage);
+          syncing.value = false;
+        }
+      }
+    }, 500);
+  } catch (e) {
+    showToast?.(e.response?.data?.message || 'ไม่สามารถเชื่อมต่อ Google ได้');
+    syncing.value = false;
+  }
+}
+
+onMounted(async () => {
+  await surveyStore.fetchAll();
+  await loadResponses();
 });
 </script>
 

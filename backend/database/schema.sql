@@ -50,17 +50,21 @@ CREATE TABLE password_resets (
 --  3. SURVEYS
 -- ─────────────────────────────────────────────
 CREATE TABLE surveys (
-  id               INT UNSIGNED     NOT NULL AUTO_INCREMENT,
-  user_id          INT UNSIGNED     NOT NULL,
-  title            VARCHAR(500)     NOT NULL,
-  description      TEXT,
-  status           ENUM('draft','active','closed') DEFAULT 'draft',
-  target_responses INT UNSIGNED,          -- notification threshold
-  close_date       DATE,
-  share_token      VARCHAR(64)      UNIQUE,   -- random token for public link / QR code
-  view_count       INT UNSIGNED     DEFAULT 0, -- how many times the public link was opened
-  created_at       TIMESTAMP        DEFAULT CURRENT_TIMESTAMP,
-  updated_at       TIMESTAMP        DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  id                   INT UNSIGNED     NOT NULL AUTO_INCREMENT,
+  user_id              INT UNSIGNED     NOT NULL,
+  title                VARCHAR(500)     NOT NULL,
+  description          TEXT,
+  status               ENUM('draft','active','closed') DEFAULT 'draft',
+  target_responses     INT UNSIGNED,          -- notification threshold
+  close_date           DATE,
+  google_form_url      VARCHAR(500),          -- viewform URL, set when linked to a Google Form
+  google_form_id       VARCHAR(100),          -- Google Forms file ID, set when linked to a Google Form
+  google_refresh_token TEXT,                  -- long-lived OAuth refresh token, enables background auto-sync (NULL until first import/sync grant)
+  last_synced_at       TIMESTAMP    NULL DEFAULT NULL, -- last time the background poller (or a manual sync) pulled responses
+  share_token          VARCHAR(64)      UNIQUE,   -- random token for public link / QR code
+  view_count           INT UNSIGNED     DEFAULT 0, -- how many times the public link was opened
+  created_at           TIMESTAMP        DEFAULT CURRENT_TIMESTAMP,
+  updated_at           TIMESTAMP        DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
   PRIMARY KEY (id),
   KEY idx_user_status    (user_id, status),
@@ -100,7 +104,9 @@ CREATE TABLE questions (
   --   scale                   : {"min":1,"max":5,"min_label":"น้อยที่สุด","max_label":"มากที่สุด"}
   --   mcgrid/cbgrid           : {"rows":["row1","row2"],"cols":["col1","col2"]}
   --   star                    : {"max_stars":5}
+  --   mcgrid/cbgrid also add  : "rowQuestionIds":["gId1","gId2",...] (parallel to "rows"), once imported from Google
   options_json  JSON,
+  google_question_id VARCHAR(128), -- Google Forms question ID, set on import; lets sync match by ID instead of guessing by position (NULL for native/pre-existing questions)
   created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
 
   PRIMARY KEY (id),

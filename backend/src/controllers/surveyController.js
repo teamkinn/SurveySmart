@@ -3,16 +3,21 @@ const { randomBytes } = require('crypto');
 
 const genToken = () => randomBytes(32).toString('hex');
 
+// Single source of truth for the "survey summary" shape (stats + Google
+// Forms sync fields) so list/create/update never drift into returning
+// different shapes for the same survey.
+const SURVEY_SUMMARY_JOIN = `
+  SELECT v.*, s.google_form_url, s.google_form_id, s.share_token, s.last_synced_at,
+         (s.google_refresh_token IS NOT NULL) AS auto_sync_enabled
+  FROM v_survey_summary v
+  JOIN surveys s ON s.id = v.id
+`;
+
 exports.list = async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT v.*, s.google_form_url, s.google_form_id, s.share_token
-       FROM v_survey_summary v
-       JOIN surveys s ON s.id = v.id
-       WHERE v.user_id = ?
-       ORDER BY v.created_at DESC`,
-      [req.user.id]
-    );
+    const [rows] = await db.query(`${SURVEY_SUMMARY_JOIN} WHERE v.user_id = ? ORDER BY v.created_at DESC`, [
+      req.user.id,
+    ]);
     res.json(rows);
   } catch (err) {
     console.error('surveyController error:', err.message);
@@ -20,11 +25,19 @@ exports.list = async (req, res) => {
   }
 };
 
+const SURVEY_COLUMNS = `
+  id, user_id, title, description, status, target_responses, close_date,
+  google_form_url, google_form_id, (google_refresh_token IS NOT NULL) AS auto_sync_enabled,
+  last_synced_at, share_token, view_count, created_at, updated_at
+`;
+
 exports.get = async (req, res) => {
   try {
     const isAdmin = req.user.role === 'admin';
     const [surveys] = await db.query(
-      isAdmin ? 'SELECT * FROM surveys WHERE id = ?' : 'SELECT * FROM surveys WHERE id = ? AND user_id = ?',
+      isAdmin
+        ? `SELECT ${SURVEY_COLUMNS} FROM surveys WHERE id = ?`
+        : `SELECT ${SURVEY_COLUMNS} FROM surveys WHERE id = ? AND user_id = ?`,
       isAdmin ? [req.params.id] : [req.params.id, req.user.id]
     );
     if (!surveys.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
@@ -81,7 +94,7 @@ exports.create = async (req, res) => {
       );
     }
 
-    const [[created]] = await db.query('SELECT * FROM v_survey_summary WHERE id = ?', [surveyId]);
+    const [[created]] = await db.query(`${SURVEY_SUMMARY_JOIN} WHERE v.id = ?`, [surveyId]);
     res.status(201).json(created);
   } catch (err) {
     console.error('surveyController error:', err.message);
@@ -94,19 +107,46 @@ exports.update = async (req, res) => {
     const { title, description, status, close_date, target_responses, questions } = req.body;
     const isAdmin = req.user.role === 'admin';
     const [chk] = await db.query(
-      isAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
+      isAdmin
+        ? 'SELECT title, description, status, close_date, target_responses FROM surveys WHERE id = ?'
+        : 'SELECT title, description, status, close_date, target_responses FROM surveys WHERE id = ? AND user_id = ?',
       isAdmin ? [req.params.id] : [req.params.id, req.user.id]
     );
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    const current = chk[0];
 
+    // Only overwrite fields the caller actually sent — a partial PUT (e.g.
+    // just { status }) must not blank out the rest of the survey.
     await db.query(
       `UPDATE surveys
        SET title=?, description=?, status=?, close_date=?, target_responses=?, updated_at=NOW()
        WHERE id=?`,
-      [title, description, status, close_date || null, target_responses || null, req.params.id]
+      [
+        title !== undefined ? title : current.title,
+        description !== undefined ? description : current.description,
+        status !== undefined ? status : current.status,
+        close_date !== undefined ? close_date || null : current.close_date,
+        target_responses !== undefined ? target_responses || null : current.target_responses,
+        req.params.id,
+      ]
     );
 
     if (Array.isArray(questions)) {
+      // Replacing questions deletes the old rows, which cascades and wipes
+      // response_answers for any response already tied to them (per-question
+      // detail is lost even though the response and its overall_score
+      // survive). Once a survey has responses, refuse to restructure its
+      // questions rather than silently destroying that data.
+      const [[{ c: responseCount }]] = await db.query(
+        'SELECT COUNT(*) AS c FROM responses WHERE survey_id = ?',
+        [req.params.id]
+      );
+      if (responseCount > 0) {
+        return res.status(409).json({
+          message: 'ไม่สามารถแก้ไขคำถามได้ เนื่องจากมีผู้ตอบแบบสอบถามนี้แล้ว',
+        });
+      }
+
       await db.query('DELETE FROM questions WHERE survey_id = ?', [req.params.id]);
       if (questions.length) {
         const vals = questions.map(q => [
@@ -127,7 +167,7 @@ exports.update = async (req, res) => {
       }
     }
 
-    const [[updated]] = await db.query('SELECT * FROM v_survey_summary WHERE id = ?', [req.params.id]);
+    const [[updated]] = await db.query(`${SURVEY_SUMMARY_JOIN} WHERE v.id = ?`, [req.params.id]);
     res.json(updated);
   } catch (err) {
     console.error('surveyController error:', err.message);

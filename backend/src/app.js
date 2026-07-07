@@ -25,3 +25,5 @@ app.get('/api/health', (_, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`SurveySmart API running on port ${PORT}`));
+
+require('./services/formSyncPoller').start();
