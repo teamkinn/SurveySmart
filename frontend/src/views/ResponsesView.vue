@@ -274,7 +274,7 @@ const route = useRoute();
 const surveyStore = useSurveyStore();
 const authStore = useAuthStore();
 const showToast = inject('showToast');
-const isAdminUser = computed(() => authStore.user?.role === 'admin');
+const isAdminUser = computed(() => ['admin', 'head_admin'].includes(authStore.user?.role));
 const responses = ref([]);
 const charts = ref([]);
 const activeTab = ref('list');

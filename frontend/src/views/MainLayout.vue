@@ -12,7 +12,8 @@
         <div class="user-chip">
           <div class="chip-avatar">{{ initials }}</div>
           <div class="chip-name">{{ fullName }}</div>
-          <span v-if="isAdmin" style="background:#ef4444;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:99px;letter-spacing:.5px;">ADMIN</span>
+          <span v-if="isHeadAdmin" style="background:#7c3aed;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:99px;letter-spacing:.5px;">HEAD ADMIN</span>
+          <span v-else-if="isAdmin" style="background:#ef4444;color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:99px;letter-spacing:.5px;">ADMIN</span>
         </div>
         <button class="top-header-btn" @click="doLogout">ออกจากระบบ</button>
       </div>
@@ -62,7 +63,8 @@ const showToast = inject('showToast');
 const builderRef = ref(null);
 const importRef = ref(null);
 
-const isAdmin = computed(() => authStore.user?.role === 'admin');
+const isHeadAdmin = computed(() => authStore.user?.role === 'head_admin');
+const isAdmin = computed(() => ['admin', 'head_admin'].includes(authStore.user?.role));
 
 const navItems = computed(() => [
   { to: '/', icon: '🏠', label: 'หน้าหลัก' },

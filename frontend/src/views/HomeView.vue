@@ -53,19 +53,38 @@
       <div class="es-sub">กดปุ่ม "สร้างแบบสอบถาม" เพื่อเริ่มต้น</div>
     </div>
     <div v-else class="survey-grid">
-      <SurveyCard v-for="s in recent" :key="s.id" :survey="s" @view="goResponses" />
+      <SurveyCard v-for="s in recent" :key="s.id" :survey="s" @view="goResponses" @share="openShare" />
+    </div>
+
+    <!-- Share modal -->
+    <div class="overlay" :class="{ open: shareModal.open }">
+      <div class="modal" style="max-width:400px;">
+        <div class="modal-header">
+          <h2>📤 แชร์แบบสอบถาม</h2>
+          <button class="modal-close" @click="shareModal.open = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:13px;color:var(--text3);margin-bottom:12px;">กรอกอีเมลผู้ใช้ที่ต้องการแชร์</p>
+          <div class="field"><label>อีเมล</label><input type="email" v-model="shareModal.email" placeholder="email@example.com"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-sm btn-outline" @click="shareModal.open = false">ยกเลิก</button>
+          <button class="btn-sm btn-blue" @click="doShare">แชร์</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue';
+import { ref, computed, inject, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSurveyStore } from '@/stores/surveys';
 import SurveyCard from '@/components/Survey/SurveyCard.vue';
 
 const router = useRouter();
 const surveyStore = useSurveyStore();
+const showToast = inject('showToast');
 
 const loading = computed(() => surveyStore.loading);
 const stats = computed(() => surveyStore.stats);
@@ -75,8 +94,24 @@ const avgScore = computed(() => {
   return isNaN(a) ? '—' : a.toFixed(1);
 });
 
+const shareModal = ref({ open: false, surveyId: null, email: '' });
+
 function goResponses(id) {
   router.push(`/surveys/${id}/responses`);
+}
+
+function openShare(id) {
+  shareModal.value = { open: true, surveyId: id, email: '' };
+}
+
+async function doShare() {
+  try {
+    await surveyStore.share(shareModal.value.surveyId, shareModal.value.email);
+    shareModal.value.open = false;
+    showToast?.('แชร์แบบสอบถามเรียบร้อยแล้ว');
+  } catch (e) {
+    showToast?.(e.response?.data?.message || 'เกิดข้อผิดพลาด');
+  }
 }
 
 onMounted(() => surveyStore.fetchAll());

@@ -13,7 +13,10 @@ exports.submitFromGoogleForm = async (req, res) => {
       "SELECT id FROM surveys WHERE google_form_id = ? AND status = 'active'",
       [formId]
     );
-    if (!survey) return res.status(404).json({ message: 'Survey not found or closed' });
+    if (!survey) {
+      await conn.rollback();
+      return res.status(404).json({ message: 'Survey not found or closed' });
+    }
 
     // Get questions in section + sort order
     const [questions] = await conn.query(
@@ -79,7 +82,6 @@ exports.submitFromGoogleForm = async (req, res) => {
     res.status(201).json({ message: 'Response saved', response_id: responseId });
   } catch (err) {
     await conn.rollback();
-    console.error('Public response error:', err.message);
     console.error('publicResponse error:', err.message);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   } finally {

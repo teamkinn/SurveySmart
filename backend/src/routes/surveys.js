@@ -1,9 +1,10 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/surveyController');
 const auth = require('../middleware/auth');
+const createPublicLimiter = require('../middleware/publicLimiter');
 
 // Public route (no auth) — for respondents scanning QR / opening share link
-router.get('/public/:token', ctrl.getByToken);
+router.get('/public/:token', createPublicLimiter(), ctrl.getByToken);
 
 router.use(auth);
 

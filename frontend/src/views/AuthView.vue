@@ -100,7 +100,7 @@ async function doLogin() {
 }
 
 async function doForgot() {
-  error.value = ''; forgotMsg.value = ''; forgotLink.value = '';
+  error.value = ''; forgotMsg.value = '';
   busy.value = true;
   try {
     const { data } = await api.post('/auth/forgot-password', { email: forgotEmail.value });

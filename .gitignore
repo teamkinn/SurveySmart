@@ -16,3 +16,7 @@ Thumbs.db
 # Editor
 .vscode/
 *.log
+
+# Claude agent internals / scratch outputs
+.claude/
+outputs/

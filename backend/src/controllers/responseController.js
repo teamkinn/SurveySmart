@@ -3,7 +3,7 @@ const db = require('../config/db');
 // Owner, admin, or a user the survey was explicitly shared with (survey_shares)
 // may view a survey's responses/stats/charts — anyone else must be rejected.
 async function canAccessSurvey(surveyId, user) {
-  if (user.role === 'admin') {
+  if (['admin', 'head_admin'].includes(user.role)) {
     const [[s]] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
     return !!s;
   }
@@ -63,7 +63,10 @@ exports.submit = async (req, res) => {
       "SELECT id FROM surveys WHERE id = ? AND status = 'active'",
       [surveyId]
     );
-    if (!survey) return res.status(403).json({ message: 'แบบสอบถามนี้ปิดรับคำตอบแล้ว' });
+    if (!survey) {
+      await conn.rollback();
+      return res.status(403).json({ message: 'แบบสอบถามนี้ปิดรับคำตอบแล้ว' });
+    }
 
     // Required-question validation — the frontend already enforces this, but
     // the API must not trust the client; anyone can POST here directly with

@@ -92,6 +92,9 @@ exports.login = async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return invalidCredentials();
 
+    if (!user.is_active)
+      return res.status(403).json({ message: 'บัญชีนี้ถูกระงับการใช้งาน กรุณาติดต่อผู้ดูแลระบบ' });
+
     const { password: _p, ...safe } = user;
     res.json({ token: signToken(user), user: safe });
   } catch (err) {

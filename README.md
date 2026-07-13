@@ -146,6 +146,5 @@ Open **http://localhost:5173**
 | `response_answers` | One row per question per submission |
 | `survey_shares` | User-to-user read access |
 | `password_resets` | Forgot password tokens |
-| `notifications` | In-app notifications |
 
 **Views:** `v_survey_summary` · `v_question_stats`

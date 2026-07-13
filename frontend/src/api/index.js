@@ -11,7 +11,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    // A 401 from the login/register endpoints just means "wrong credentials"
+    // or "validation failed" — that should surface as an inline error on the
+    // form, not force a hard redirect/reload while the user is mid-attempt.
+    const url = err.config?.url || '';
+    const isAuthAttempt = url.includes('/auth/login') || url.includes('/auth/register');
+    if (err.response?.status === 401 && !isAuthAttempt) {
       localStorage.removeItem('token');
       window.location.href = '/login';
     }

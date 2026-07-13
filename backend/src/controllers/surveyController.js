@@ -33,7 +33,7 @@ const SURVEY_COLUMNS = `
 
 exports.get = async (req, res) => {
   try {
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
     const [surveys] = await db.query(
       isAdmin
         ? `SELECT ${SURVEY_COLUMNS} FROM surveys WHERE id = ?`
@@ -105,7 +105,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { title, description, status, close_date, target_responses, questions } = req.body;
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
     const [chk] = await db.query(
       isAdmin
         ? 'SELECT title, description, status, close_date, target_responses FROM surveys WHERE id = ?'
@@ -177,7 +177,7 @@ exports.update = async (req, res) => {
 
 exports.remove = async (req, res) => {
   try {
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
     const [chk] = await db.query(
       isAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
       isAdmin ? [req.params.id] : [req.params.id, req.user.id]
@@ -193,7 +193,7 @@ exports.remove = async (req, res) => {
 
 exports.publish = async (req, res) => {
   try {
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
     const [chk] = await db.query(
       isAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
       isAdmin ? [req.params.id] : [req.params.id, req.user.id]
@@ -211,7 +211,7 @@ exports.publish = async (req, res) => {
 
 exports.listOthers = async (req, res) => {
   try {
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
     const [rows] = await db.query(
       `SELECT vs.*, u.first_name, u.last_name, u.username AS owner_username
        FROM v_survey_summary vs

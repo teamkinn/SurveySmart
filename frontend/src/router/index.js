@@ -49,7 +49,7 @@ router.beforeEach((to, _, next) => {
   const auth = useAuthStore();
   if (to.meta.requiresAuth && !auth.token) return next('/login');
   if (to.meta.guest && auth.token) return next('/');
-  if (to.meta.adminOnly && auth.user?.role !== 'admin') return next('/');
+  if (to.meta.adminOnly && !['admin', 'head_admin'].includes(auth.user?.role)) return next('/');
   next();
 });
 

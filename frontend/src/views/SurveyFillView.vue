@@ -111,11 +111,6 @@
           <input v-else-if="q.question_type === 'time'"
                  class="fill-input" type="time" v-model="answers[q.id].text">
 
-          <!-- number -->
-          <input v-else-if="q.question_type === 'number'"
-                 class="fill-input" type="number" v-model="answers[q.id].text"
-                 placeholder="กรอกตัวเลข">
-
           <!-- fallback -->
           <input v-else class="fill-input" v-model="answers[q.id].text" placeholder="คำตอบของคุณ">
         </div>

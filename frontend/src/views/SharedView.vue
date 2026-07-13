@@ -79,7 +79,7 @@ const authStore = useAuthStore();
 const showToast = inject('showToast');
 const search = ref('');
 const statusFilter = ref('');
-const isAdmin = computed(() => authStore.user?.role === 'admin');
+const isAdmin = computed(() => ['admin', 'head_admin'].includes(authStore.user?.role));
 
 const filtered = computed(() =>
   surveyStore.others.filter(s => {

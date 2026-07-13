@@ -295,7 +295,6 @@ const Q_TYPES = [
   { value: 'radio', label: 'หลายตัวเลือก', icon: '◉'  },
   { value: 'checkbox', label: 'ช่องทำเครื่องหมาย', icon: '☑'  },
   { value: 'dropdown', label: 'เลื่อนลง', icon: '⌄'  },
-  { value: 'file', label: 'อัปโหลดไฟล์', icon: '↑'  },
   { value: 'scale', label: 'สเกลเชิงเส้น', icon: '↔'  },
   { value: 'star', label: 'คะแนน (ดาว)', icon: '☆'  },
   { value: 'date', label: 'วันที่', icon: '📅' },

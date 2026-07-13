@@ -19,7 +19,7 @@ CREATE TABLE users (
   password     VARCHAR(255)    NOT NULL,
   first_name   VARCHAR(100)    DEFAULT '',
   last_name    VARCHAR(100)    DEFAULT '',
-  role         ENUM('user','admin') DEFAULT 'user',
+  role         ENUM('user','admin','head_admin') DEFAULT 'user',
   is_active    TINYINT(1)      DEFAULT 1,
   created_at   TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
   updated_at   TIMESTAMP       DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -171,26 +171,6 @@ CREATE TABLE survey_shares (
   UNIQUE KEY uq_share (survey_id, shared_with_id),
   FOREIGN KEY (survey_id)      REFERENCES surveys(id) ON DELETE CASCADE,
   FOREIGN KEY (shared_with_id) REFERENCES users(id)   ON DELETE CASCADE
-) ENGINE=InnoDB;
-
--- ─────────────────────────────────────────────
---  8. NOTIFICATIONS
--- ─────────────────────────────────────────────
-CREATE TABLE notifications (
-  id         INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  user_id    INT UNSIGNED NOT NULL,
-  type       ENUM('new','goal','warn') NOT NULL,
-  title      VARCHAR(255) NOT NULL,
-  message    TEXT,
-  survey_id  INT UNSIGNED,
-  is_read    TINYINT(1)   DEFAULT 0,
-  created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-
-  PRIMARY KEY (id),
-  KEY idx_user_unread (user_id, is_read),   -- fast unread-count query
-  KEY idx_created     (created_at),
-  FOREIGN KEY (user_id)   REFERENCES users(id)    ON DELETE CASCADE,
-  FOREIGN KEY (survey_id) REFERENCES surveys(id)  ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ============================================================
