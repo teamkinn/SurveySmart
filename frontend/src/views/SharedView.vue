@@ -59,6 +59,7 @@
               <button class="btn-sm btn-blue" @click="$router.push(`/surveys/${s.id}/responses`)">📊 ดูผล</button>
               <template v-if="isAdmin">
                 <button v-if="s.status === 'draft'" class="btn-sm btn-outline" @click="adminPublish(s.id)">🚀 เผยแพร่</button>
+                <button class="btn-sm btn-outline" @click="openEdit(s)">✏️ แก้ไข</button>
                 <button class="btn-sm btn-red" @click="adminRemove(s.id)">🗑</button>
               </template>
             </td>
@@ -66,6 +67,8 @@
         </tbody>
       </table>
     </div>
+
+    <EditSurveyModal ref="editModalRef" @saved="surveyStore.fetchAll" />
   </div>
 </template>
 
@@ -73,6 +76,7 @@
 import { ref, computed, onMounted, inject } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
 import { useAuthStore }   from '@/stores/auth';
+import EditSurveyModal from '@/components/Survey/EditSurveyModal.vue';
 
 const surveyStore = useSurveyStore();
 const authStore = useAuthStore();
@@ -80,6 +84,8 @@ const showToast = inject('showToast');
 const search = ref('');
 const statusFilter = ref('');
 const isAdmin = computed(() => ['admin', 'head_admin'].includes(authStore.user?.role));
+
+const editModalRef = ref(null);
 
 const filtered = computed(() =>
   surveyStore.others.filter(s => {
@@ -110,6 +116,11 @@ async function adminRemove(id) {
   await surveyStore.remove(id);
   await surveyStore.fetchAll();
   showToast('ลบแบบสอบถามแล้ว');
+}
+
+function openEdit(s) {
+  const owner = s.first_name ? `${s.first_name} ${s.last_name || ''}`.trim() : s.owner_username;
+  editModalRef.value?.open(s, owner);
 }
 
 onMounted(() => surveyStore.fetchAll());

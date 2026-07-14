@@ -36,6 +36,10 @@ export const useSurveyStore = defineStore('surveys', {
       const { data } = await api.put(`/surveys/${id}`, payload);
       const idx = this.list.findIndex(s => s.id === id);
       if (idx >= 0) this.list[idx] = data;
+      // Admins can also edit other users' surveys, shown in `others` — keep
+      // that list in sync too so the table reflects the save immediately.
+      const oIdx = this.others.findIndex(s => s.id === id);
+      if (oIdx >= 0) this.others[oIdx] = { ...this.others[oIdx], ...data };
       return data;
     },
     async publish(id) {

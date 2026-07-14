@@ -28,7 +28,8 @@ exports.list = async (req, res) => {
 const SURVEY_COLUMNS = `
   id, user_id, title, description, status, target_responses, close_date,
   google_form_url, google_form_id, (google_refresh_token IS NOT NULL) AS auto_sync_enabled,
-  last_synced_at, share_token, view_count, created_at, updated_at
+  last_synced_at, share_token, view_count, created_at, updated_at,
+  (SELECT COUNT(*) FROM responses r WHERE r.survey_id = surveys.id) AS response_count
 `;
 
 exports.get = async (req, res) => {

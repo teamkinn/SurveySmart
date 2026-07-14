@@ -5,9 +5,13 @@ const cors = require('cors');
 const app = express();
 
 app.set('trust proxy', 1);
+const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim());
+
 app.use(
   cors({
-    origin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
+    origin: allowedOrigins,
     allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
   })
 );

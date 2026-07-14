@@ -98,25 +98,7 @@
       </div>
     </div>
 
-    <!-- Edit modal -->
-    <div class="overlay" :class="{ open: editModal.open }">
-      <div class="modal" style="max-width:440px;">
-        <div class="modal-header">
-          <h2>✏️ แก้ไขแบบสอบถาม</h2>
-          <button class="modal-close" @click="editModal.open = false">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="field"><label>ชื่อแบบสอบถาม *</label><input v-model="editModal.title" placeholder="ชื่อแบบสอบถาม"></div>
-          <div class="field"><label>คำอธิบาย</label><textarea v-model="editModal.description" rows="3" placeholder="อธิบายวัตถุประสงค์ของแบบสอบถาม"></textarea></div>
-          <div class="field"><label>วันสิ้นสุด</label><input type="date" v-model="editModal.close_date"></div>
-          <div class="field"><label>เป้าหมายจำนวนผู้ตอบ</label><input type="number" min="1" v-model="editModal.target_responses" placeholder="เช่น 100"></div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-sm btn-outline" @click="editModal.open = false">ยกเลิก</button>
-          <button class="btn-sm btn-blue" :disabled="editSaving" @click="doEdit">{{ editSaving ? 'กำลังบันทึก...' : 'บันทึก' }}</button>
-        </div>
-      </div>
-    </div>
+    <EditSurveyModal ref="editModalRef" @saved="surveyStore.fetchAll" />
 
     <!-- Share modal -->
     <div class="overlay" :class="{ open: shareModal.open }">
@@ -141,6 +123,7 @@
 <script setup>
 import { ref, computed, inject, onMounted } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
+import EditSurveyModal from '@/components/Survey/EditSurveyModal.vue';
 
 const surveyStore = useSurveyStore();
 const showToast = inject('showToast');
@@ -151,8 +134,7 @@ const sortBy = ref('newest');
 const shareModal = ref({ open: false, surveyId: null, email: '' });
 const qrModal = ref({ open: false, title: '', url: '', dataUrl: '' });
 const copied = ref(false);
-const editModal = ref({ open: false, id: null, title: '', description: '', close_date: '', target_responses: '' });
-const editSaving = ref(false);
+const editModalRef = ref(null);
 
 const filtered = computed(() => {
   let result = surveyStore.list.filter(s => {
@@ -208,36 +190,7 @@ function openShare(s) {
 }
 
 function openEdit(s) {
-  editModal.value = {
-    open: true,
-    id: s.id,
-    title: s.title || '',
-    description: s.description || '',
-    close_date: s.close_date ? String(s.close_date).slice(0, 10) : '',
-    target_responses: s.target_responses || '',
-  };
-}
-
-async function doEdit() {
-  if (!editModal.value.title.trim()) {
-    showToast('กรุณาระบุชื่อแบบสอบถาม');
-    return;
-  }
-  editSaving.value = true;
-  try {
-    await surveyStore.update(editModal.value.id, {
-      title: editModal.value.title.trim(),
-      description: editModal.value.description,
-      close_date: editModal.value.close_date || null,
-      target_responses: editModal.value.target_responses || null,
-    });
-    editModal.value.open = false;
-    showToast('บันทึกการแก้ไขเรียบร้อยแล้ว');
-  } catch (e) {
-    showToast(e.response?.data?.message || 'เกิดข้อผิดพลาด');
-  } finally {
-    editSaving.value = false;
-  }
+  editModalRef.value?.open(s);
 }
 
 async function doShare() {
