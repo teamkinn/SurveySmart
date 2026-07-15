@@ -63,8 +63,9 @@
                       title="ระงับการใช้งาน" aria-label="ระงับการใช้งาน" @click="setStatus(u, false)">⛔</button>
               <button v-if="isHeadAdmin && u.id !== self.id && !u.is_active" class="icon-btn icon-btn-green"
                       title="เปิดใช้งาน" aria-label="เปิดใช้งาน" @click="setStatus(u, true)">✅</button>
-              <button v-if="isHeadAdmin && u.id !== self.id" class="icon-btn icon-btn-red"
-                      title="ลบบัญชี" aria-label="ลบบัญชี" @click="deleteUser(u)">🗑</button>
+              <button v-if="isHeadAdmin && u.id !== self.id" class="icon-btn icon-btn-delete"
+                      title="ลบบัญชี" aria-label="ลบบัญชี" @click="deleteUser(u)"><span class="delete-icon">🗑</span></button>
+              <span v-if="u.id === self.id" style="color:var(--text3);">—</span>
             </td>
           </tr>
         </tbody>
@@ -233,6 +234,12 @@ onMounted(() => {
 .icon-btn-green { background: rgba(16,185,129,.1); }
 .icon-btn-red   { background: rgba(239,68,68,.1); }
 .icon-btn-amber { background: rgba(245,158,11,.12); }
+.icon-btn-delete {
+  width: 32px; height: 32px; background: #dc2626; border-color: #dc2626;
+  font-size: 15px;
+}
+.icon-btn-delete:hover { background: #b91c1c; border-color: #b91c1c; }
+.delete-icon { filter: grayscale(1) brightness(2.2); }
 .tri-up {
   width: 0; height: 0;
   border-left: 6px solid transparent; border-right: 6px solid transparent;
