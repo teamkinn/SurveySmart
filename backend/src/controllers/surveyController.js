@@ -106,12 +106,14 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { title, description, status, close_date, target_responses, questions } = req.body;
-    const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
+    // Only head_admin may edit surveys they don't own — a regular admin can
+    // still edit their own (falls through to the ownership-scoped query).
+    const isHeadAdmin = req.user.role === 'head_admin';
     const [chk] = await db.query(
-      isAdmin
+      isHeadAdmin
         ? 'SELECT title, description, status, close_date, target_responses FROM surveys WHERE id = ?'
         : 'SELECT title, description, status, close_date, target_responses FROM surveys WHERE id = ? AND user_id = ?',
-      isAdmin ? [req.params.id] : [req.params.id, req.user.id]
+      isHeadAdmin ? [req.params.id] : [req.params.id, req.user.id]
     );
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
     const current = chk[0];
@@ -178,10 +180,11 @@ exports.update = async (req, res) => {
 
 exports.remove = async (req, res) => {
   try {
-    const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
+    // Only head_admin may delete surveys they don't own.
+    const isHeadAdmin = req.user.role === 'head_admin';
     const [chk] = await db.query(
-      isAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
-      isAdmin ? [req.params.id] : [req.params.id, req.user.id]
+      isHeadAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
+      isHeadAdmin ? [req.params.id] : [req.params.id, req.user.id]
     );
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
     await db.query('DELETE FROM surveys WHERE id = ?', [req.params.id]);
@@ -194,10 +197,11 @@ exports.remove = async (req, res) => {
 
 exports.publish = async (req, res) => {
   try {
-    const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
+    // Only head_admin may publish surveys they don't own.
+    const isHeadAdmin = req.user.role === 'head_admin';
     const [chk] = await db.query(
-      isAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
-      isAdmin ? [req.params.id] : [req.params.id, req.user.id]
+      isHeadAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
+      isHeadAdmin ? [req.params.id] : [req.params.id, req.user.id]
     );
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
     await db.query("UPDATE surveys SET status='active' WHERE id = ?", [req.params.id]);

@@ -101,8 +101,8 @@
             <td style="font-size:11px;color:var(--text3);">{{ formatDate(s.created_at) }}</td>
             <td class="actions-cell">
               <button class="btn-sm btn-blue" @click="$router.push(`/surveys/${s.id}/responses`)">📊 ดูผล</button>
-              <button v-if="s.status === 'draft'" class="btn-sm btn-outline" @click="publishSurvey(s)">🚀 เผยแพร่</button>
-              <button class="btn-sm btn-red" @click="removeSurvey(s)">🗑</button>
+              <button v-if="isHeadAdmin && s.status === 'draft'" class="btn-sm btn-outline" @click="publishSurvey(s)">🚀 เผยแพร่</button>
+              <button v-if="isHeadAdmin" class="btn-sm btn-red" @click="removeSurvey(s)">🗑</button>
             </td>
           </tr>
         </tbody>
