@@ -235,10 +235,10 @@ onMounted(() => {
 .icon-btn-red   { background: rgba(239,68,68,.1); }
 .icon-btn-amber { background: rgba(245,158,11,.12); }
 .icon-btn-delete {
-  width: 32px; height: 32px; background: #dc2626; border-color: #dc2626;
+  width: 32px; height: 32px; background: #e57373; border-color: #e57373;
   font-size: 15px;
 }
-.icon-btn-delete:hover { background: #b91c1c; border-color: #b91c1c; }
+.icon-btn-delete:hover { background: #d9534f; border-color: #d9534f; }
 .delete-icon { filter: grayscale(1) brightness(2.2); }
 .tri-up {
   width: 0; height: 0;
