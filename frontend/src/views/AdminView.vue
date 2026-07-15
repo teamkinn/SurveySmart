@@ -51,16 +51,20 @@
             </td>
             <td style="font-size:11px;color:var(--text3);">{{ formatDate(u.created_at) }}</td>
             <td class="actions-cell">
-              <button v-if="isHeadAdmin && u.id !== self.id && u.role === 'user'" class="btn-sm btn-outline"
-                      @click="setRole(u, 'admin')">⬆️ Admin</button>
-              <button v-if="isHeadAdmin && u.id !== self.id && u.role === 'admin'" class="btn-sm btn-outline"
-                      @click="setRole(u, 'user')">⬇️ User</button>
-              <button v-if="isHeadAdmin && u.id !== self.id && u.is_active" class="btn-sm btn-outline"
-                      @click="setStatus(u, false)">⛔ ระงับ</button>
-              <button v-if="isHeadAdmin && u.id !== self.id && !u.is_active" class="btn-sm btn-outline"
-                      @click="setStatus(u, true)">✅ เปิดใช้งาน</button>
-              <button v-if="isHeadAdmin && u.id !== self.id" class="btn-sm btn-red"
-                      @click="deleteUser(u)">🗑</button>
+              <button v-if="isHeadAdmin && u.id !== self.id && u.role === 'user'" class="icon-btn icon-btn-green"
+                      title="เลื่อนเป็น Admin" aria-label="เลื่อนเป็น Admin" @click="setRole(u, 'admin')">
+                <span class="tri-up"></span>
+              </button>
+              <button v-if="isHeadAdmin && u.id !== self.id && u.role === 'admin'" class="icon-btn icon-btn-red"
+                      title="ลดเป็น User" aria-label="ลดเป็น User" @click="setRole(u, 'user')">
+                <span class="tri-down"></span>
+              </button>
+              <button v-if="isHeadAdmin && u.id !== self.id && u.is_active" class="icon-btn icon-btn-amber"
+                      title="ระงับการใช้งาน" aria-label="ระงับการใช้งาน" @click="setStatus(u, false)">⛔</button>
+              <button v-if="isHeadAdmin && u.id !== self.id && !u.is_active" class="icon-btn icon-btn-green"
+                      title="เปิดใช้งาน" aria-label="เปิดใช้งาน" @click="setStatus(u, true)">✅</button>
+              <button v-if="isHeadAdmin && u.id !== self.id" class="icon-btn icon-btn-red"
+                      title="ลบบัญชี" aria-label="ลบบัญชี" @click="deleteUser(u)">🗑</button>
             </td>
           </tr>
         </tbody>
@@ -220,4 +224,23 @@ onMounted(() => {
   cursor: pointer;
 }
 .admin-tab.active { background: var(--royal); color: #fff; border-color: var(--royal); }
+
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border, #e2e8f0);
+  cursor: pointer; margin-right: 6px; font-size: 13px; background: #fff;
+}
+.icon-btn-green { background: rgba(16,185,129,.1); }
+.icon-btn-red   { background: rgba(239,68,68,.1); }
+.icon-btn-amber { background: rgba(245,158,11,.12); }
+.tri-up {
+  width: 0; height: 0;
+  border-left: 6px solid transparent; border-right: 6px solid transparent;
+  border-bottom: 10px solid #10b981;
+}
+.tri-down {
+  width: 0; height: 0;
+  border-left: 6px solid transparent; border-right: 6px solid transparent;
+  border-top: 10px solid #dc2626;
+}
 </style>
