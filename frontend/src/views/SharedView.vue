@@ -7,11 +7,11 @@
       </div>
     </div>
 
-    <div v-if="!isAdmin" style="background:rgba(26,86,160,.06);border:1px solid rgba(26,86,160,.18);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--royal);">
+    <div v-if="!isHeadAdmin" style="background:rgba(26,86,160,.06);border:1px solid rgba(26,86,160,.18);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--royal);">
       👁️ สิทธิ์ <b>View Only</b> — ดูผลได้ ไม่สามารถแก้ไขหรือลบได้
     </div>
     <div v-else style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:12px;color:#dc2626;">
-      ⚙️ โหมด <b>Admin</b> — มีสิทธิ์เต็มกับทุกแบบสอบถาม
+      ⚙️ โหมด <b>Head Admin</b> — มีสิทธิ์เต็มกับทุกแบบสอบถาม
     </div>
 
     <div class="filter-bar">
@@ -57,7 +57,7 @@
             <td style="color:var(--text3);font-size:11px;">{{ formatDate(s.created_at) }}</td>
             <td class="actions-cell">
               <button class="btn-sm btn-blue" @click="$router.push(`/surveys/${s.id}/responses`)">📊 ดูผล</button>
-              <template v-if="isAdmin">
+              <template v-if="isHeadAdmin">
                 <button v-if="s.status === 'draft'" class="btn-sm btn-outline" @click="adminPublish(s.id)">🚀 เผยแพร่</button>
                 <button class="btn-sm btn-outline" @click="openEdit(s)">✏️ แก้ไข</button>
                 <button class="btn-sm btn-red" @click="adminRemove(s.id)">🗑</button>
@@ -83,7 +83,7 @@ const authStore = useAuthStore();
 const showToast = inject('showToast');
 const search = ref('');
 const statusFilter = ref('');
-const isAdmin = computed(() => ['admin', 'head_admin'].includes(authStore.user?.role));
+const isHeadAdmin = computed(() => authStore.user?.role === 'head_admin');
 
 const editModalRef = ref(null);
 
