@@ -61,6 +61,10 @@
                     </div>
                     <button class="add-option-btn" @click="q.opts.push('')">＋ เพิ่มตัวเลือก</button>
                   </div>
+                  <div v-if="q.type === 'scale'" class="scale-range-row">
+                    <span>ต่ำสุด</span><input type="number" v-model.number="q.scaleMin" class="scale-range-input">
+                    <span>สูงสุด</span><input type="number" v-model.number="q.scaleMax" class="scale-range-input">
+                  </div>
                 </div>
 
                 <div class="add-q-bar"><button class="add-q-btn" @click="addQ(si)">＋ เพิ่มคำถาม</button></div>
@@ -129,8 +133,8 @@ onMounted(() => document.addEventListener('click', _closeAll));
 onBeforeUnmount(() => document.removeEventListener('click', _closeAll));
 
 let qId = 0;
-function mkQ(type, text, opts = [], required = false) {
-  return { id: ++qId, type, text, opts: [...opts], required, scaleMin: 1, scaleMax: 5 };
+function mkQ(type, text, opts = [], required = false, scaleMin = 1, scaleMax = 5) {
+  return { id: ++qId, type, text, opts: [...opts], required, scaleMin, scaleMax };
 }
 
 function addQ(si) { sections.value[si].push(mkQ('short', '')); }
@@ -162,6 +166,16 @@ function parseOpts(json) {
   }
 }
 
+// Scale/star store their range as {min,max}, not an array — parseOpts()
+// above would flatten that to [] and silently drop the configured range.
+function parseScaleRange(json) {
+  try {
+    const v = typeof json === 'string' ? JSON.parse(json) : json;
+    if (v && !Array.isArray(v)) return { min: v.min ?? 1, max: v.max ?? 5 };
+  } catch { /* fall through to default */ }
+  return { min: 1, max: 5 };
+}
+
 async function open(survey, ownerText = '') {
   isOpen.value = true;
   loading.value = true;
@@ -187,7 +201,8 @@ async function open(survey, ownerText = '') {
     const grouped = [[], [], []];
     questions.forEach(q => {
       const si = Math.min(Math.max((q.section_number || 1) - 1, 0), 2);
-      grouped[si].push(mkQ(q.question_type, q.question_text || '', parseOpts(q.options_json), !!q.is_required));
+      const range = q.question_type === 'scale' ? parseScaleRange(q.options_json) : { min: 1, max: 5 };
+      grouped[si].push(mkQ(q.question_type, q.question_text || '', parseOpts(q.options_json), !!q.is_required, range.min, range.max));
     });
     sections.value = grouped;
   } catch (e) {
@@ -220,13 +235,14 @@ async function doSave() {
       const questions = [];
       sections.value.forEach((sec, si) => {
         sec.forEach((q, i) => {
+          const options = q.type === 'scale' ? { min: q.scaleMin ?? 1, max: q.scaleMax ?? 5 } : q.opts;
           questions.push({
             section: si + 1,
             order: i,
             text: q.text,
             type: q.type,
             required: q.required,
-            options: q.opts,
+            options,
           });
         });
       });
@@ -261,4 +277,6 @@ defineExpose({ open });
 .q-type-item.active { background: rgba(26,86,160,.08); color: var(--royal); font-weight: 700; }
 .q-type-item-icon { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
 .option-bullet { font-size: 13px; color: var(--text3); width: 18px; text-align: center; flex-shrink: 0; }
+.scale-range-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--text2); }
+.scale-range-input { width: 60px; padding: 5px 8px; border: 1.5px solid var(--line); border-radius: var(--r2); font-family: 'Sarabun', sans-serif; font-size: 12px; }
 </style>

@@ -5,7 +5,6 @@ const createPublicLimiter = require('../middleware/publicLimiter');
 
 router.get('/', auth, ctrl.list);
 router.post('/', createPublicLimiter(), ctrl.submit);
-router.get('/stats', auth, ctrl.stats);
 router.get('/chart-data', auth, ctrl.chartData);
 
 module.exports = router;

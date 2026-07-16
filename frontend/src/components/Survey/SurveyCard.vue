@@ -8,7 +8,7 @@
     <div class="survey-stats">
       <div class="s-stat"><div class="val">{{ survey.response_count || 0 }}</div><div class="lbl">ผู้ตอบ</div></div>
       <div class="s-stat"><div class="val">{{ avgScore }}</div><div class="lbl">คะแนนเฉลี่ย</div></div>
-      <div class="s-stat"><div class="val">{{ survey.status === 'active' ? 'เปิด' : 'ปิด' }}</div><div class="lbl">สถานะ</div></div>
+      <div class="s-stat"><div class="val">{{ statusLabel }}</div><div class="lbl">สถานะ</div></div>
     </div>
     <div class="survey-actions">
       <button class="btn-sm btn-blue" @click="$emit('view', survey.id)">📊 ดูผล</button>
@@ -31,6 +31,10 @@ const badgeClass = computed(() => ({
 
 const badgeText = computed(() => {
   return props.survey.status === 'active' ? '🟢 Active' : props.survey.status === 'draft' ? '✏️ Draft' : '⬜ Closed';
+});
+
+const statusLabel = computed(() => {
+  return props.survey.status === 'active' ? 'เปิดรับ' : props.survey.status === 'draft' ? 'แบบร่าง' : 'ปิดรับ';
 });
 
 const avgScore = computed(() => {

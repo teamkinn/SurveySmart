@@ -11,6 +11,6 @@ router.get('/surveys', ctrl.listSurveys);
 router.patch('/users/:id/role', isHeadAdmin, ctrl.setRole);
 router.patch('/users/:id/status', isHeadAdmin, ctrl.setStatus);
 router.delete('/users/:id', isHeadAdmin, ctrl.deleteUser);
-router.delete('/surveys/:surveyId/responses/nullscore', ctrl.deleteNullResponses);
+router.delete('/surveys/:surveyId/responses/nullscore', isHeadAdmin, ctrl.deleteNullResponses);
 
 module.exports = router;

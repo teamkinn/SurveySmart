@@ -242,28 +242,3 @@ exports.chartData = async (req, res) => {
   }
 };
 
-exports.stats = async (req, res) => {
-  try {
-    const surveyId = req.params.surveyId;
-
-    if (!(await canAccessSurvey(surveyId, req.user))) {
-      return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
-    }
-
-    const [[summary]] = await db.query(
-      `SELECT COUNT(*) AS total, ROUND(AVG(overall_score),2) AS avg_score, MAX(submitted_at) AS last_at
-       FROM responses WHERE survey_id = ?`,
-      [surveyId]
-    );
-
-    const [breakdown] = await db.query(
-      'SELECT * FROM v_question_stats WHERE survey_id = ? ORDER BY section_number, question_id',
-      [surveyId]
-    );
-
-    res.json({ ...summary, breakdown });
-  } catch (err) {
-    console.error('responses.stats error:', err.message);
-    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
-  }
-};
