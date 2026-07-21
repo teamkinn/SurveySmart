@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { google } = require('googleapis');
 const { randomBytes } = require('crypto');
+const rateLimit = require('express-rate-limit');
 const auth = require('../middleware/auth');
 const db = require('../config/db');
 const {
@@ -28,13 +29,25 @@ router.get('/auth-url', (req, res) => {
   res.json({ url, state });
 });
 
+// The frontend polls oauth-status roughly every 1.5s for up to the 5-minute
+// popup timeout (~200 requests in the normal case) — sized generously above
+// that so a real user never gets throttled, while still bounding an
+// authenticated client from hammering it indefinitely.
+const oauthStatusLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 400,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'คำขอมากเกินไป กรุณารอสักครู่แล้วลองใหม่' },
+});
+
 // GET /api/google/oauth-status?state=... — polled by the opener tab while
 // the Google consent popup is open. Google's accounts.google.com pages set
 // Cross-Origin-Opener-Policy: same-origin, which severs window.opener the
 // moment the popup navigates there — so the popup->opener postMessage
 // handoff can't be relied on. Polling this instead only needs a plain
 // same-origin XHR from the opener tab, unaffected by COOP.
-router.get('/oauth-status', (req, res) => {
+router.get('/oauth-status', oauthStatusLimiter, (req, res) => {
   const { state } = req.query;
   if (!state) return res.status(400).json({ message: 'state is required' });
   res.json({ ready: hasTokens(state, req.user.id) });

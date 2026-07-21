@@ -24,3 +24,7 @@ Thumbs.db
 # Claude agent internals / scratch outputs
 .claude/
 outputs/
+
+# Generated report deliverables — useful locally, not source code
+/SurveySmart_CodeReview_Fixes.pdf
+/SurveySmart_Test_Results.pdf

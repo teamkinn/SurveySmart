@@ -33,7 +33,6 @@ router.get('/callback', async (req, res) => {
         <button id="closeBtn" onclick="window.close()" style="display:none;margin-top:10px;padding:8px 20px;border-radius:8px;border:1px solid #dde3ee;background:#fff;cursor:pointer;font-size:13px;">ปิดหน้าต่างนี้</button>
       </div>
       <script>
-        var closed = false;
         try {
           if (window.opener) {
             window.opener.postMessage({ type: 'google-oauth-done', state: ${safeState} }, ${safeOrigin});
@@ -41,7 +40,6 @@ router.get('/callback', async (req, res) => {
         } catch (e) { /* opener link severed by COOP — the opener tab is polling instead */ }
         try {
           window.close();
-          closed = true;
         } catch (e) { /* some browsers restrict self-close; fall back to the button below */ }
         // If window.close() didn't actually take effect (blocked silently
         // rather than throwing), reveal the manual-close fallback shortly after.

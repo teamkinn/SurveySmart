@@ -20,8 +20,10 @@ export function openGoogleAuthPopup(url, state, { timeoutMs = 5 * 60 * 1000, int
   const popup = window.open(url, 'google-auth', 'width=520,height=620,scrollbars=yes');
   let cancelled = false;
   let timer = null;
+  let rejectFn = null;
 
   const promise = new Promise((resolve, reject) => {
+    rejectFn = reject;
     if (!popup) {
       reject(new Error('POPUP_BLOCKED'));
       return;
@@ -49,9 +51,16 @@ export function openGoogleAuthPopup(url, state, { timeoutMs = 5 * 60 * 1000, int
   });
 
   function cancel() {
+    // Without this guard, and without rejecting below, the `await
+    // activeAuthPopup.promise` in every caller (SurveyBuilder.vue,
+    // ImportSurveyModal.vue, ResponsesView.vue) would be left permanently
+    // pending after a manual cancel — a leaked microtask/closure per
+    // cancel, since nothing else ever settles that promise.
+    if (cancelled) return;
     cancelled = true;
     if (timer) clearInterval(timer);
     try { popup?.close(); } catch { /* ignore — COOP may block this */ }
+    rejectFn?.(new Error('CANCELLED'));
   }
 
   return { promise, cancel };
