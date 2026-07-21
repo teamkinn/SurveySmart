@@ -16,15 +16,41 @@ router.get('/callback', async (req, res) => {
     const { tokens } = await client.getToken(code);
     storeTokens(state, tokens);
 
-    // Use JSON.stringify to safely embed state into JS (prevents XSS)
+    // The opener tab is told to finish via polling GET /api/google/oauth-status
+    // (see routes/googleForms.js), not via this postMessage — Google's own
+    // accounts.google.com pages send Cross-Origin-Opener-Policy: same-origin,
+    // which permanently severs window.opener the instant this popup
+    // navigated there for the consent screen, so `window.opener` is null (or
+    // the postMessage/close calls throw) in most modern browsers by the time
+    // we get here. The postMessage below is kept as a best-effort fast path
+    // for browsers/setups where the opener link does survive, wrapped so a
+    // COOP failure can't leave the user on a blank/broken page.
     const safeState = JSON.stringify(state);
     const safeOrigin = JSON.stringify(CLIENT_ORIGIN);
-    res.send(`<!DOCTYPE html><html><body><script>
-      if (window.opener) {
-        window.opener.postMessage({ type: 'google-oauth-done', state: ${safeState} }, ${safeOrigin});
-      }
-      window.close();
-    </script></body></html>`);
+    res.send(`<!DOCTYPE html><html><body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f0f4fb;">
+      <div style="text-align:center;">
+        <p id="msg" style="color:#1a2b4c;font-size:15px;">กำลังกลับไปที่ SurveySmart...</p>
+        <button id="closeBtn" onclick="window.close()" style="display:none;margin-top:10px;padding:8px 20px;border-radius:8px;border:1px solid #dde3ee;background:#fff;cursor:pointer;font-size:13px;">ปิดหน้าต่างนี้</button>
+      </div>
+      <script>
+        var closed = false;
+        try {
+          if (window.opener) {
+            window.opener.postMessage({ type: 'google-oauth-done', state: ${safeState} }, ${safeOrigin});
+          }
+        } catch (e) { /* opener link severed by COOP — the opener tab is polling instead */ }
+        try {
+          window.close();
+          closed = true;
+        } catch (e) { /* some browsers restrict self-close; fall back to the button below */ }
+        // If window.close() didn't actually take effect (blocked silently
+        // rather than throwing), reveal the manual-close fallback shortly after.
+        setTimeout(function () {
+          document.getElementById('msg').textContent = 'อนุญาตเรียบร้อยแล้ว — กลับไปที่แท็บ SurveySmart ได้เลย (หน้าต่างนี้ปิดได้)';
+          document.getElementById('closeBtn').style.display = 'inline-block';
+        }, 800);
+      </script>
+    </body></html>`);
   } catch (e) {
     console.error('Google OAuth error:', e.message);
     res.status(500).send('Google authorization failed. Please close this window and try again.');

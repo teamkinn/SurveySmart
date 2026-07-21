@@ -77,6 +77,7 @@ import { ref, computed, onMounted, inject } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
 import { useAuthStore }   from '@/stores/auth';
 import EditSurveyModal from '@/components/Survey/EditSurveyModal.vue';
+import { formatDate, badgeClass, badgeText } from '@/composables/useSurveyStatus';
 
 const surveyStore = useSurveyStore();
 const authStore = useAuthStore();
@@ -95,16 +96,6 @@ const filtered = computed(() =>
     return ok && st;
   })
 );
-
-function badgeClass(status) {
-  return { 'badge-active': status === 'active', 'badge-draft': status === 'draft', 'badge-closed': status === 'closed' };
-}
-function badgeText(status) {
-  return status === 'active' ? '🟢 Active' : status === 'draft' ? '✏️ Draft' : '⬜ Closed';
-}
-function formatDate(d) {
-  return d ? new Date(d).toLocaleDateString('th-TH') : '—';
-}
 
 async function adminPublish(id) {
   await surveyStore.publish(id);

@@ -15,9 +15,8 @@
       <button
         v-if="survey?.google_form_id && !isShared"
         class="btn-sm btn-outline"
-        :disabled="syncing"
-        @click="syncNow"
-      >{{ syncing ? '⟳ กำลังซิงค์...' : '🔄 ซิงค์ตอนนี้' }}</button>
+        @click="syncing ? cancelSync() : syncNow()"
+      >{{ syncing ? '✕ ยกเลิก (กำลังซิงค์...)' : '🔄 ซิงค์ตอนนี้' }}</button>
       <span v-if="survey" class="survey-badge" :class="badgeClass(survey.status)">{{ badgeText(survey.status) }}</span>
     </div>
 
@@ -269,6 +268,8 @@ import { useRoute } from 'vue-router';
 import { useSurveyStore } from '@/stores/surveys';
 import { useAuthStore }   from '@/stores/auth';
 import api from '@/api';
+import { badgeClass, badgeText, interpClass, interpText } from '@/composables/useSurveyStatus';
+import { openGoogleAuthPopup } from '@/composables/useGoogleOAuthPopup';
 
 const route = useRoute();
 const surveyStore = useSurveyStore();
@@ -427,23 +428,6 @@ function formatDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
-function badgeClass(s) { return { 'badge-active': s === 'active', 'badge-draft': s === 'draft', 'badge-closed': s === 'closed' }; }
-function badgeText(s)  { return s === 'active' ? '🟢 Active' : s === 'draft' ? '✏️ Draft' : '⬜ Closed'; }
-function interpClass(avg) {
-  if (avg >= 4.5) return 'interp-5';
-  if (avg >= 3.5) return 'interp-4';
-  if (avg >= 2.5) return 'interp-3';
-  if (avg >= 1.5) return 'interp-2';
-  return 'interp-1';
-}
-function interpText(avg) {
-  if (avg >= 4.5) return 'ดีมาก';
-  if (avg >= 3.5) return 'ดี';
-  if (avg >= 2.5) return 'ปานกลาง';
-  if (avg >= 1.5) return 'พอใช้';
-  return 'ควรปรับปรุง';
-}
-
 async function loadResponses() {
   const [r1, r2] = await Promise.all([
     api.get(`/surveys/${route.params.id}/responses`),
@@ -459,63 +443,52 @@ async function loadResponses() {
   });
 }
 
+// Tracks the in-flight popup/poller so cancelSync() can stop it — see
+// useGoogleOAuthPopup.js for why we poll our backend instead of using
+// window.opener/postMessage or reading popup.closed (both broken by
+// Google's own Cross-Origin-Opener-Policy header).
+let activeAuthPopup = null;
+
 async function syncNow() {
   if (syncing.value || !survey.value?.id) return;
   // Captured now, at click time — `survey` is reactive and re-reading
-  // `survey.value.id` inside the async message handler below would pick up
-  // whatever survey the page has navigated to by the time the OAuth popup
-  // resolves, not the one the user actually clicked "sync" on.
+  // `survey.value.id` after the OAuth popup resolves would pick up whatever
+  // survey the page has navigated to by then, not the one the user actually
+  // clicked "sync" on.
   const surveyId = survey.value.id;
   syncing.value = true;
   try {
     const { data } = await api.get('/google/sync-auth-url');
-    const { url, state } = data;
 
-    const popup = window.open(url, 'google-auth', 'width=520,height=620,scrollbars=yes');
-    if (!popup) {
-      showToast?.('เบราว์เซอร์บล็อกป๊อปอัป กรุณาอนุญาตป๊อปอัปสำหรับเว็บไซต์นี้แล้วลองใหม่');
+    activeAuthPopup = openGoogleAuthPopup(data.url, data.state);
+    try {
+      await activeAuthPopup.promise;
+    } catch (e) {
+      activeAuthPopup = null;
       syncing.value = false;
+      showToast?.(
+        e.message === 'POPUP_BLOCKED' ? 'เบราว์เซอร์บล็อกป๊อปอัป กรุณาอนุญาตป๊อปอัปสำหรับเว็บไซต์นี้แล้วลองใหม่' :
+        e.message === 'TIMEOUT' ? 'หมดเวลารอการอนุญาต Google กรุณาลองใหม่' :
+        'การซิงค์ถูกยกเลิก'
+      );
       return;
     }
-    let popupHandled = false;
+    activeAuthPopup = null;
 
-    const onMessage = async (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'google-oauth-done') return;
-      popupHandled = true;
-      window.removeEventListener('message', onMessage);
-      if (popup && !popup.closed) popup.close();
-      try {
-        const { data: result } = await api.post('/google/sync-responses', {
-          state: event.data.state,
-          surveyId,
-        });
-        await Promise.all([loadResponses(), surveyStore.fetchAll()]);
-        showToast?.(`ซิงค์สำเร็จ — เพิ่ม ${result.synced} รายการ (ข้าม ${result.skipped} รายการที่มีอยู่แล้ว)`);
-      } catch (e) {
-        showToast?.(e.response?.data?.message || 'ซิงค์ไม่สำเร็จ');
-      } finally {
-        syncing.value = false;
-      }
-    };
-    window.addEventListener('message', onMessage);
-
-    // If the user closes the popup before authorizing, stop showing the
-    // "syncing" state — but not if we've already moved on to the sync-responses
-    // call (popup.close() there would otherwise falsely look like a cancel).
-    const checkClosed = setInterval(() => {
-      if (popup?.closed) {
-        clearInterval(checkClosed);
-        if (!popupHandled) {
-          window.removeEventListener('message', onMessage);
-          syncing.value = false;
-        }
-      }
-    }, 500);
+    const { data: result } = await api.post('/google/sync-responses', { state: data.state, surveyId });
+    await Promise.all([loadResponses(), surveyStore.fetchAll()]);
+    showToast?.(`ซิงค์สำเร็จ — เพิ่ม ${result.synced} รายการ (ข้าม ${result.skipped} รายการที่มีอยู่แล้ว)`);
   } catch (e) {
     showToast?.(e.response?.data?.message || 'ไม่สามารถเชื่อมต่อ Google ได้');
+  } finally {
     syncing.value = false;
   }
+}
+
+function cancelSync() {
+  activeAuthPopup?.cancel();
+  activeAuthPopup = null;
+  syncing.value = false;
 }
 
 onMounted(async () => {

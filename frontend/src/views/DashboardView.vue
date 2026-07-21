@@ -225,6 +225,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
 import api from '@/api';
+import { formatDate, badgeClass, badgeText, interpClass, interpText } from '@/composables/useSurveyStatus';
 
 const surveyStore = useSurveyStore();
 const selectedId = ref(null);
@@ -293,25 +294,6 @@ watch(selectedId, async (id) => {
 watch(() => surveyStore.list, (list) => {
   if (list.length && !selectedId.value) selectedId.value = list[0].id;
 }, { immediate: true });
-
-function formatDate(d) { return d ? new Date(d).toLocaleDateString('th-TH') : '—'; }
-function badgeClass(s) { return { 'badge-active': s === 'active', 'badge-draft': s === 'draft', 'badge-closed': s === 'closed' }; }
-function badgeText(s)  { return s === 'active' ? '🟢 Active' : s === 'draft' ? '✏️ Draft' : '⬜ Closed'; }
-
-function interpClass(avg) {
-  if (avg >= 4.5) return 'interp-5';
-  if (avg >= 3.5) return 'interp-4';
-  if (avg >= 2.5) return 'interp-3';
-  if (avg >= 1.5) return 'interp-2';
-  return 'interp-1';
-}
-function interpText(avg) {
-  if (avg >= 4.5) return 'ดีมาก';
-  if (avg >= 3.5) return 'ดี';
-  if (avg >= 2.5) return 'ปานกลาง';
-  if (avg >= 1.5) return 'พอใช้';
-  return 'ควรปรับปรุง';
-}
 
 onMounted(() => surveyStore.fetchAll());
 </script>

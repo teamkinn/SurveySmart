@@ -34,7 +34,8 @@
           <div class="im-status-box">
             <div class="im-big-icon">🔐</div>
             <p class="im-status-title">รอการอนุญาต Google</p>
-            <p class="im-status-sub">หน้าต่าง Google กำลังเปิดอยู่ — เข้าสู่ระบบและอนุญาตการเข้าถึง Forms</p>
+            <p class="im-status-sub">หน้าต่าง Google กำลังเปิดอยู่ — เข้าสู่ระบบและอนุญาตการเข้าถึง Forms<br>เมื่ออนุญาตเสร็จแล้ว หน้าต่างนี้จะดำเนินการต่อโดยอัตโนมัติ</p>
+            <button type="button" class="btn-sm btn-outline" @click="cancelAuthorizing">ยกเลิก</button>
           </div>
         </template>
 
@@ -100,6 +101,7 @@
 import { ref, inject } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '@/api';
+import { openGoogleAuthPopup } from '@/composables/useGoogleOAuthPopup';
 
 const emit = defineEmits(['imported']);
 const router = useRouter();
@@ -126,6 +128,12 @@ function closeAndGo() {
   router.push('/surveys');
 }
 
+// Tracks the in-flight popup/poller so cancelAuthorizing() can stop it —
+// see useGoogleOAuthPopup.js for why we poll our backend instead of using
+// window.opener/postMessage or reading popup.closed (both broken by
+// Google's own Cross-Origin-Opener-Policy header).
+let activeAuthPopup = null;
+
 async function startAuth() {
   if (!formUrl.value.trim()) return;
 
@@ -137,31 +145,33 @@ async function startAuth() {
 
   try {
     const { data } = await api.get('/google/import-auth-url');
-    const { url, state } = data;
     phase.value = 'authorizing';
 
-    const popup = window.open(url, 'google-auth', 'width=520,height=620,scrollbars=yes');
-
-    const onMessage = async (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'google-oauth-done') return;
-      window.removeEventListener('message', onMessage);
-      if (popup && !popup.closed) popup.close();
-      await doImport(event.data.state);
-    };
-    window.addEventListener('message', onMessage);
-
-    const checkClosed = setInterval(() => {
-      if (popup?.closed) {
-        clearInterval(checkClosed);
-        window.removeEventListener('message', onMessage);
-        if (phase.value === 'authorizing') phase.value = 'input';
-      }
-    }, 500);
+    activeAuthPopup = openGoogleAuthPopup(data.url, data.state);
+    try {
+      await activeAuthPopup.promise;
+    } catch (e) {
+      activeAuthPopup = null;
+      if (phase.value !== 'authorizing') return; // user already cancelled
+      errorMsg.value =
+        e.message === 'POPUP_BLOCKED' ? 'เบราว์เซอร์บล็อกป๊อปอัป กรุณาอนุญาตป๊อปอัปสำหรับเว็บไซต์นี้แล้วลองใหม่' :
+        e.message === 'TIMEOUT' ? 'หมดเวลารอการอนุญาต Google กรุณาลองใหม่' :
+        'การอนุญาต Google ไม่สำเร็จ กรุณาลองใหม่';
+      phase.value = 'error';
+      return;
+    }
+    activeAuthPopup = null;
+    await doImport(data.state);
   } catch (e) {
     errorMsg.value = e.response?.data?.message || 'ไม่สามารถเชื่อมต่อ Google ได้';
     phase.value = 'error';
   }
+}
+
+function cancelAuthorizing() {
+  activeAuthPopup?.cancel();
+  activeAuthPopup = null;
+  phase.value = 'input';
 }
 
 async function doImport(state) {

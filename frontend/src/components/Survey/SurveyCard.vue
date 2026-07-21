@@ -19,19 +19,13 @@
 
 <script setup>
 import { computed } from 'vue';
+import { formatDate, badgeClass as badgeClassFor, badgeText as badgeTextFor } from '@/composables/useSurveyStatus';
 
 const props = defineProps({ survey: { type: Object, required: true } });
 defineEmits(['view', 'share']);
 
-const badgeClass = computed(() => ({
-  'badge-active': props.survey.status === 'active',
-  'badge-draft':  props.survey.status === 'draft',
-  'badge-closed': props.survey.status === 'closed',
-}));
-
-const badgeText = computed(() => {
-  return props.survey.status === 'active' ? '🟢 Active' : props.survey.status === 'draft' ? '✏️ Draft' : '⬜ Closed';
-});
+const badgeClass = computed(() => badgeClassFor(props.survey.status));
+const badgeText = computed(() => badgeTextFor(props.survey.status));
 
 const statusLabel = computed(() => {
   return props.survey.status === 'active' ? 'เปิดรับ' : props.survey.status === 'draft' ? 'แบบร่าง' : 'ปิดรับ';
@@ -41,8 +35,4 @@ const avgScore = computed(() => {
   const a = parseFloat(props.survey.avg_score);
   return isNaN(a) ? '—' : a.toFixed(1);
 });
-
-function formatDate(d) {
-  return d ? new Date(d).toLocaleDateString('th-TH') : '—';
-}
 </script>

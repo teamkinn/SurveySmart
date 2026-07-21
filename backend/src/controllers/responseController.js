@@ -186,7 +186,9 @@ exports.chartData = async (req, res) => {
         data = labels.map(l => ({ label: l, count: counts[l] || 0 }));
       } else if (['scale', 'star'].includes(q.question_type)) {
         chartType = 'score';
-        const min = opts?.min || 1, max = opts?.max || 5;
+        // ?? (not ||) — a deliberately-configured min of 0 must not be
+        // overwritten by the default just because 0 is falsy.
+        const min = opts?.min ?? 1, max = opts?.max ?? 5;
         const counts = {};
         for (let i = min; i <= max; i++) counts[i] = 0;
         qAnswers.forEach(a => {

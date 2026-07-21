@@ -124,6 +124,7 @@
 import { ref, computed, inject, onMounted } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
 import EditSurveyModal from '@/components/Survey/EditSurveyModal.vue';
+import { formatDate, badgeClass, badgeText } from '@/composables/useSurveyStatus';
 
 const surveyStore = useSurveyStore();
 const showToast = inject('showToast');
@@ -147,15 +148,6 @@ const filtered = computed(() => {
   return result;
 });
 
-function badgeClass(status) {
-  return { 'badge-active': status === 'active', 'badge-draft': status === 'draft', 'badge-closed': status === 'closed' };
-}
-function badgeText(status) {
-  return status === 'active' ? '🟢 Active' : status === 'draft' ? '✏️ Draft' : '⬜ Closed';
-}
-function formatDate(d) {
-  return d ? new Date(d).toLocaleDateString('th-TH') : '—';
-}
 function clearFilters() {
   search.value = ''; statusFilter.value = ''; sortBy.value = 'newest';
 }

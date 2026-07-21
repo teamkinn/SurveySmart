@@ -227,7 +227,8 @@
             <div class="gf-center-status">
               <div class="gf-center-icon">🔐</div>
               <p class="gf-center-title">รอการอนุญาต Google</p>
-              <p class="gf-center-sub">หน้าต่าง Google กำลังเปิดอยู่<br>เข้าสู่ระบบและกด "อนุญาต" เพื่อเข้าถึง Google Forms</p>
+              <p class="gf-center-sub">หน้าต่าง Google กำลังเปิดอยู่<br>เข้าสู่ระบบและกด "อนุญาต" เพื่อเข้าถึง Google Forms<br>เมื่ออนุญาตเสร็จแล้ว หน้าต่างนี้จะดำเนินการต่อโดยอัตโนมัติ</p>
+              <button type="button" class="btn-sm btn-outline" @click="cancelAuthorizing">ยกเลิก</button>
             </div>
           </template>
 
@@ -277,6 +278,7 @@ import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue';
 import QRCode from 'qrcode';
 import api from '@/api';
 import { useSurveyStore } from '@/stores/surveys';
+import { openGoogleAuthPopup } from '@/composables/useGoogleOAuthPopup';
 
 const emit = defineEmits(['created']);
 const showToast = inject('showToast');
@@ -423,34 +425,43 @@ function stepBack() {
 }
 
 // ── Google Forms ──────────────────────────────────────────────
+// Tracks the in-flight popup/poller so cancelAuthorizing() can stop it —
+// see useGoogleOAuthPopup.js for why we poll our backend instead of using
+// window.opener/postMessage or reading popup.closed (both broken by
+// Google's own Cross-Origin-Opener-Policy header).
+let activeAuthPopup = null;
+
 async function createGoogleForm() {
   try {
     const { data } = await api.get('/google/auth-url');
+    gfError.value = '';
     gfPhase.value = 'authorizing';
 
-    const popup = window.open(data.url, 'google-auth', 'width=520,height=620,scrollbars=yes');
-
-    const onMessage = async (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'google-oauth-done') return;
-      window.removeEventListener('message', onMessage);
-      clearInterval(closedCheck);
-      if (popup && !popup.closed) popup.close();
-      await submitToGoogle(event.data.state);
-    };
-    window.addEventListener('message', onMessage);
-
-    const closedCheck = setInterval(() => {
-      if (popup?.closed) {
-        clearInterval(closedCheck);
-        window.removeEventListener('message', onMessage);
-        if (gfPhase.value === 'authorizing') gfPhase.value = 'preview';
-      }
-    }, 500);
+    activeAuthPopup = openGoogleAuthPopup(data.url, data.state);
+    try {
+      await activeAuthPopup.promise;
+    } catch (e) {
+      activeAuthPopup = null;
+      if (gfPhase.value !== 'authorizing') return; // user already cancelled
+      gfError.value =
+        e.message === 'POPUP_BLOCKED' ? 'เบราว์เซอร์บล็อกป๊อปอัป กรุณาอนุญาตป๊อปอัปสำหรับเว็บไซต์นี้แล้วลองใหม่' :
+        e.message === 'TIMEOUT' ? 'หมดเวลารอการอนุญาต Google กรุณาลองใหม่' :
+        'การอนุญาต Google ไม่สำเร็จ กรุณาลองใหม่';
+      gfPhase.value = 'error';
+      return;
+    }
+    activeAuthPopup = null;
+    await submitToGoogle(data.state);
   } catch (e) {
     gfError.value = e.response?.data?.message || 'ไม่สามารถเชื่อมต่อ Google';
     gfPhase.value = 'error';
   }
+}
+
+function cancelAuthorizing() {
+  activeAuthPopup?.cancel();
+  activeAuthPopup = null;
+  gfPhase.value = 'preview';
 }
 
 async function submitToGoogle(state) {

@@ -151,8 +151,10 @@ function parseOpts(o) {
   return [];
 }
 
-function scaleMin(q) { const o = q.options_json; return (o && !Array.isArray(o) ? o.min : null) || 1; }
-function scaleMax(q) { const o = q.options_json; return (o && !Array.isArray(o) ? o.max : null) || 5; }
+// ?? (not ||) — a deliberately-configured min of 0 must not be overwritten
+// by the default just because 0 is falsy.
+function scaleMin(q) { const o = q.options_json; return (o && !Array.isArray(o) ? o.min : null) ?? 1; }
+function scaleMax(q) { const o = q.options_json; return (o && !Array.isArray(o) ? o.max : null) ?? 5; }
 function scaleRange(q) {
   const min = scaleMin(q), max = scaleMax(q);
   return Array.from({ length: max - min + 1 }, (_, i) => min + i);

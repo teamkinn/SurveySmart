@@ -7,6 +7,7 @@ const {
   getClient,
   registerPendingState,
   getTokens,
+  hasTokens,
   removeTokens,
 } = require('../services/googleAuth');
 const { pullFormResponses } = require('../services/googleFormsSync');
@@ -16,7 +17,7 @@ router.use(auth);
 // GET /api/google/auth-url
 router.get('/auth-url', (req, res) => {
   const state = Math.random().toString(36).substring(2, 12);
-  registerPendingState(state);
+  registerPendingState(state, req.user.id);
   const client = getClient();
   const url = client.generateAuthUrl({
     access_type: 'offline',
@@ -27,10 +28,22 @@ router.get('/auth-url', (req, res) => {
   res.json({ url, state });
 });
 
+// GET /api/google/oauth-status?state=... — polled by the opener tab while
+// the Google consent popup is open. Google's accounts.google.com pages set
+// Cross-Origin-Opener-Policy: same-origin, which severs window.opener the
+// moment the popup navigates there — so the popup->opener postMessage
+// handoff can't be relied on. Polling this instead only needs a plain
+// same-origin XHR from the opener tab, unaffected by COOP.
+router.get('/oauth-status', (req, res) => {
+  const { state } = req.query;
+  if (!state) return res.status(400).json({ message: 'state is required' });
+  res.json({ ready: hasTokens(state, req.user.id) });
+});
+
 // POST /api/google/create-form
 router.post('/create-form', async (req, res) => {
   const { state, survey } = req.body;
-  const tokens = getTokens(state);
+  const tokens = getTokens(state, req.user.id);
   if (!tokens) {
     return res.status(401).json({ message: 'Google auth expired — please authorize again' });
   }
@@ -73,7 +86,7 @@ router.post('/create-form', async (req, res) => {
 // GET /api/google/import-auth-url
 router.get('/import-auth-url', (req, res) => {
   const state = Math.random().toString(36).substring(2, 12);
-  registerPendingState(state);
+  registerPendingState(state, req.user.id);
   const client = getClient();
   const url = client.generateAuthUrl({
     access_type: 'offline',
@@ -92,7 +105,7 @@ router.post('/import-form', async (req, res) => {
   const { state, formUrl } = req.body;
   if (!formUrl) return res.status(400).json({ message: 'กรุณาระบุ URL ของ Google Form' });
 
-  const tokens = getTokens(state);
+  const tokens = getTokens(state, req.user.id);
   if (!tokens) {
     return res.status(401).json({ message: 'Google auth expired — please authorize again' });
   }
@@ -227,7 +240,7 @@ router.post('/import-form', async (req, res) => {
 // GET /api/google/sync-auth-url — same scopes as import, for the "sync now" popup flow
 router.get('/sync-auth-url', (req, res) => {
   const state = Math.random().toString(36).substring(2, 12);
-  registerPendingState(state);
+  registerPendingState(state, req.user.id);
   const client = getClient();
   const url = client.generateAuthUrl({
     access_type: 'offline',
@@ -246,7 +259,7 @@ router.post('/sync-responses', async (req, res) => {
   const { state, surveyId } = req.body;
   if (!surveyId) return res.status(400).json({ message: 'surveyId is required' });
 
-  const tokens = getTokens(state);
+  const tokens = getTokens(state, req.user.id);
   if (!tokens) {
     return res.status(401).json({ message: 'Google auth expired — please authorize again' });
   }
