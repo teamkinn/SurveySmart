@@ -185,12 +185,12 @@
       <!-- ── Respondents + Comments ── -->
       <div class="bottom-grid">
         <div class="chart-card">
-          <h3>👥 ข้อมูลผู้ตอบ</h3>
-          <div v-if="!responses.length" style="color:var(--text3);font-size:13px;margin-top:8px;">ยังไม่มีคำตอบ</div>
+          <h3>👥 ข้อมูลผู้ตอบล่าสุด</h3>
+          <div v-if="!recentResponses.length" style="color:var(--text3);font-size:13px;margin-top:8px;">ยังไม่มีคำตอบ</div>
           <table v-else class="stat-table">
             <thead><tr><th>#</th><th>ชื่อ</th><th>คะแนน</th><th>วันที่</th></tr></thead>
             <tbody>
-              <tr v-for="(r, i) in responses" :key="r.id">
+              <tr v-for="(r, i) in recentResponses" :key="r.id">
                 <td style="color:var(--text3);font-size:11px;">{{ i + 1 }}</td>
                 <td>{{ r.respondent_name }}</td>
                 <td class="avg-cell">
@@ -244,7 +244,18 @@ const avgScore = computed(() => {
   return isNaN(a) ? '—' : a.toFixed(2);
 });
 
-const comments = computed(() => responses.value.filter(r => r.note));
+const recentResponses = computed(() =>
+  [...responses.value]
+    .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))
+    .slice(0, 5)
+);
+
+const comments = computed(() =>
+  responses.value
+    .filter(r => r.note)
+    .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at))
+    .slice(0, 5)
+);
 
 const progressPct = computed(() => {
   if (!selected.value?.target_responses) return 0;
