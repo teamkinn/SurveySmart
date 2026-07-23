@@ -63,6 +63,7 @@ CREATE TABLE surveys (
   last_synced_at       TIMESTAMP    NULL DEFAULT NULL, -- last time the background poller (or a manual sync) pulled responses
   share_token          VARCHAR(64)      UNIQUE,   -- random token for public link / QR code
   view_count           INT UNSIGNED     DEFAULT 0, -- how many times the public link was opened
+  shared_all           TINYINT(1)       NOT NULL DEFAULT 0, -- owner opted this survey into "visible to every user" (vs. per-user survey_shares rows)
   created_at           TIMESTAMP        DEFAULT CURRENT_TIMESTAMP,
   updated_at           TIMESTAMP        DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 

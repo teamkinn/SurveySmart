@@ -8,6 +8,23 @@
       <div class="modal-body">
         <p style="font-size:13px;color:var(--text3);margin-bottom:14px;">{{ survey?.title }}</p>
 
+        <div class="sm-public-row">
+          <div>
+            <div class="sm-public-title">🌐 แชร์ให้ทุกคนเห็น</div>
+            <div class="sm-public-sub">ผู้ใช้ทุกคนจะเห็นแบบสอบถามนี้ในหน้า "แชร์ให้ฉันดู"</div>
+          </div>
+          <button
+            class="sm-switch"
+            :class="{ on: sharedAll }"
+            :disabled="togglingPublic"
+            role="switch"
+            :aria-checked="sharedAll"
+            @click="togglePublic"
+          ><span class="sm-switch-knob"></span></button>
+        </div>
+
+        <div class="sm-divider">หรือแชร์เฉพาะบางคน</div>
+
         <div class="field">
           <label>ค้นหาด้วยอีเมล ชื่อผู้ใช้ หรือชื่อ</label>
           <input v-model="query" type="text" placeholder="พิมพ์อย่างน้อย 2 ตัวอักษร...">
@@ -64,6 +81,8 @@ const searching = ref(false);
 const shares = ref([]);
 const loadingShares = ref(false);
 const busyId = ref(null);
+const sharedAll = ref(false);
+const togglingPublic = ref(false);
 
 let searchTimer = null;
 watch(query, (q) => {
@@ -127,10 +146,25 @@ async function removeShare(u) {
   }
 }
 
+async function togglePublic() {
+  togglingPublic.value = true;
+  const next = !sharedAll.value;
+  try {
+    await surveyStore.setSharedAll(survey.value.id, next);
+    sharedAll.value = next;
+    showToast?.(next ? 'แชร์ให้ทุกคนเห็นแล้ว' : 'ยกเลิกแชร์ให้ทุกคนแล้ว');
+  } catch (e) {
+    showToast?.(e.response?.data?.message || 'เปลี่ยนการแชร์ไม่สำเร็จ');
+  } finally {
+    togglingPublic.value = false;
+  }
+}
+
 async function open(s) {
   survey.value = s;
   query.value = '';
   results.value = [];
+  sharedAll.value = !!s.shared_all;
   isOpen.value = true;
   await loadShares();
 }
@@ -143,6 +177,15 @@ defineExpose({ open });
 </script>
 
 <style scoped>
+.sm-public-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--slate); border-radius: var(--r2); padding: 10px 12px; margin-bottom: 12px; }
+.sm-public-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.sm-public-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.sm-switch { width: 38px; height: 22px; border-radius: 99px; background: var(--line); border: none; cursor: pointer; position: relative; flex-shrink: 0; transition: background .15s; padding: 0; }
+.sm-switch.on { background: var(--royal); }
+.sm-switch:disabled { opacity: .6; cursor: default; }
+.sm-switch-knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s; }
+.sm-switch.on .sm-switch-knob { left: 18px; }
+.sm-divider { font-size: 11px; color: var(--text3); text-align: center; margin: 4px 0 10px; position: relative; }
 .sm-results { margin-top: 8px; border: 1px solid var(--line); border-radius: var(--r2); max-height: 180px; overflow-y: auto; }
 .sm-result-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 .sm-result-row:last-child { border-bottom: none; }

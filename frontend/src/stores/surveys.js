@@ -58,6 +58,12 @@ export const useSurveyStore = defineStore('surveys', {
     async share(id, payload) {
       await api.post(`/surveys/${id}/share`, payload);
     },
+    async setSharedAll(id, enabled) {
+      const { data } = await api.patch(`/surveys/${id}/share-all`, { enabled });
+      const s = this.list.find(x => x.id === id);
+      if (s) s.shared_all = data.shared_all;
+      return data;
+    },
     async getShares(id) {
       const { data } = await api.get(`/surveys/${id}/shares`);
       return data;

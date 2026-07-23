@@ -1,7 +1,8 @@
 const db = require('../config/db');
 
-// Owner, admin, or a user the survey was explicitly shared with (survey_shares)
-// may view a survey's responses/stats/charts — anyone else must be rejected.
+// Owner, admin, a user the survey was explicitly shared with (survey_shares),
+// or anyone when the owner opted the survey into shared_all — may view a
+// survey's responses/stats/charts. Anyone else must be rejected.
 async function canAccessSurvey(surveyId, user) {
   if (['admin', 'head_admin'].includes(user.role)) {
     const [[s]] = await db.query('SELECT id FROM surveys WHERE id = ?', [surveyId]);
@@ -10,7 +11,7 @@ async function canAccessSurvey(surveyId, user) {
   const [[s]] = await db.query(
     `SELECT s.id FROM surveys s
      LEFT JOIN survey_shares sh ON sh.survey_id = s.id AND sh.shared_with_id = ?
-     WHERE s.id = ? AND (s.user_id = ? OR sh.id IS NOT NULL)`,
+     WHERE s.id = ? AND (s.user_id = ? OR sh.id IS NOT NULL OR s.shared_all = 1)`,
     [user.id, surveyId, user.id]
   );
   return !!s;

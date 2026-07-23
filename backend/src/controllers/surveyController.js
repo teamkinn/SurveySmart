@@ -7,7 +7,7 @@ const genToken = () => randomBytes(32).toString('hex');
 // Forms sync fields) so list/create/update never drift into returning
 // different shapes for the same survey.
 const SURVEY_SUMMARY_JOIN = `
-  SELECT v.*, s.google_form_url, s.google_form_id, s.share_token, s.last_synced_at,
+  SELECT v.*, s.google_form_url, s.google_form_id, s.share_token, s.last_synced_at, s.shared_all,
          (s.google_refresh_token IS NOT NULL) AS auto_sync_enabled
   FROM v_survey_summary v
   JOIN surveys s ON s.id = v.id
@@ -28,7 +28,7 @@ exports.list = async (req, res) => {
 const SURVEY_COLUMNS = `
   id, user_id, title, description, status, target_responses, close_date,
   google_form_url, google_form_id, (google_refresh_token IS NOT NULL) AS auto_sync_enabled,
-  last_synced_at, share_token, view_count, created_at, updated_at,
+  last_synced_at, share_token, view_count, shared_all, created_at, updated_at,
   (SELECT COUNT(*) FROM responses r WHERE r.survey_id = surveys.id) AS response_count
 `;
 
@@ -233,18 +233,43 @@ exports.listOthers = async (req, res) => {
   }
 };
 
+// A survey shows up here two ways: an explicit per-user survey_shares row
+// (JOIN ss below — shared_at reflects when that happened), or the owner
+// opting the whole survey into "visible to everyone" (s.shared_all = 1 —
+// no per-user row exists, so shared_at is NULL and the frontend shows a
+// "shared with everyone" badge instead of a date). LEFT JOIN so a survey
+// that's both still only shows once, with the real shared_at.
 exports.listShared = async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT vs.*, u.first_name, u.last_name, u.username AS owner_username, ss.created_at AS shared_at
+      `SELECT vs.*, u.first_name, u.last_name, u.username AS owner_username,
+              ss.created_at AS shared_at, (ss.id IS NULL) AS shared_via_public
        FROM v_survey_summary vs
-       JOIN survey_shares ss ON ss.survey_id = vs.id
+       JOIN surveys s ON s.id = vs.id
        JOIN users u ON u.id = vs.user_id
-       WHERE ss.shared_with_id = ?
-       ORDER BY ss.created_at DESC`,
-      [req.user.id]
+       LEFT JOIN survey_shares ss ON ss.survey_id = vs.id AND ss.shared_with_id = ?
+       WHERE vs.user_id != ? AND (ss.id IS NOT NULL OR s.shared_all = 1)
+       ORDER BY (ss.created_at IS NULL), ss.created_at DESC, vs.created_at DESC`,
+      [req.user.id, req.user.id]
     );
     res.json(rows);
+  } catch (err) {
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
+  }
+};
+
+// Owner only — toggle whether this survey is visible to every user (in
+// addition to whoever it's explicitly shared with via survey_shares).
+exports.setSharedAll = async (req, res) => {
+  try {
+    const enabled = req.body.enabled ? 1 : 0;
+    const [result] = await db.query(
+      'UPDATE surveys SET shared_all = ? WHERE id = ? AND user_id = ?',
+      [enabled, req.params.id, req.user.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    res.json({ message: enabled ? 'แชร์ให้ทุกคนเห็นแล้ว' : 'ยกเลิกแชร์ให้ทุกคนแล้ว', shared_all: !!enabled });
   } catch (err) {
     console.error('surveyController error:', err.message);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });

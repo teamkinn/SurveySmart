@@ -20,5 +20,6 @@ router.patch('/:id/publish', ctrl.publish);
 router.get('/:id/shares', ctrl.shares);
 router.post('/:id/share', ctrl.share);
 router.delete('/:id/share/:userId', ctrl.unshare);
+router.patch('/:id/share-all', ctrl.setSharedAll);
 
 module.exports = router;

@@ -55,7 +55,10 @@
             <td><span class="survey-badge" :class="badgeClass(s.status)">{{ badgeText(s.status) }}</span></td>
             <td><span style="font-weight:700;">{{ s.response_count || 0 }}</span></td>
             <td>{{ s.avg_score ? parseFloat(s.avg_score).toFixed(1) : '—' }}</td>
-            <td style="color:var(--text3);font-size:11px;">{{ formatDate(s.shared_at) }}</td>
+            <td style="color:var(--text3);font-size:11px;">
+              <span v-if="s.shared_via_public" style="background:rgba(26,86,160,.08);color:var(--royal);padding:2px 8px;border-radius:99px;font-weight:700;">🌐 ทุกคน</span>
+              <template v-else>{{ formatDate(s.shared_at) }}</template>
+            </td>
             <td class="actions-cell">
               <button class="btn-sm btn-blue" @click="$router.push(`/surveys/${s.id}/responses`)">📊 ดูผล</button>
               <template v-if="isHeadAdmin">
