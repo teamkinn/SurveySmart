@@ -236,12 +236,12 @@ exports.listOthers = async (req, res) => {
 exports.listShared = async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT vs.*, u.first_name, u.last_name, u.username AS owner_username
+      `SELECT vs.*, u.first_name, u.last_name, u.username AS owner_username, ss.created_at AS shared_at
        FROM v_survey_summary vs
        JOIN survey_shares ss ON ss.survey_id = vs.id
        JOIN users u ON u.id = vs.user_id
        WHERE ss.shared_with_id = ?
-       ORDER BY vs.created_at DESC`,
+       ORDER BY ss.created_at DESC`,
       [req.user.id]
     );
     res.json(rows);
@@ -251,24 +251,78 @@ exports.listShared = async (req, res) => {
   }
 };
 
-exports.share = async (req, res) => {
+// Who a survey is currently shared with — owner only. Powers the share
+// modal's "already shared with" chip list.
+exports.shares = async (req, res) => {
   try {
-    const { email } = req.body;
     const [chk] = await db.query(
       'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
       [req.params.id, req.user.id]
     );
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
-    const [target] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
-    if (!target.length) return res.status(404).json({ message: 'ไม่พบผู้ใช้งานอีเมลนี้' });
-    if (target[0].id === req.user.id) return res.status(400).json({ message: 'ไม่สามารถแชร์ให้ตัวเองได้' });
+    const [rows] = await db.query(
+      `SELECT u.id, u.username, u.email, u.first_name, u.last_name, ss.created_at AS shared_at
+       FROM survey_shares ss
+       JOIN users u ON u.id = ss.shared_with_id
+       WHERE ss.survey_id = ?
+       ORDER BY ss.created_at DESC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
+  }
+};
+
+// Accepts either { user_id } (from the picker, preferred) or { email }
+// (kept for compatibility) — exactly one should be sent.
+exports.share = async (req, res) => {
+  try {
+    const { email, user_id } = req.body;
+    const [chk] = await db.query(
+      'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
+      [req.params.id, req.user.id]
+    );
+    if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+
+    let target;
+    if (user_id) {
+      const [rows] = await db.query('SELECT id FROM users WHERE id = ?', [user_id]);
+      target = rows[0];
+    } else if (email) {
+      const [rows] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+      target = rows[0];
+    }
+    if (!target) return res.status(404).json({ message: 'ไม่พบผู้ใช้งาน' });
+    if (target.id === req.user.id) return res.status(400).json({ message: 'ไม่สามารถแชร์ให้ตัวเองได้' });
 
     await db.query(
       'INSERT IGNORE INTO survey_shares (survey_id, shared_with_id) VALUES (?,?)',
-      [req.params.id, target[0].id]
+      [req.params.id, target.id]
     );
     res.json({ message: 'แชร์แบบสอบถามเรียบร้อยแล้ว' });
+  } catch (err) {
+    console.error('surveyController error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
+  }
+};
+
+// Owner only — revoke a previously-granted share.
+exports.unshare = async (req, res) => {
+  try {
+    const [chk] = await db.query(
+      'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
+      [req.params.id, req.user.id]
+    );
+    if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+
+    await db.query(
+      'DELETE FROM survey_shares WHERE survey_id = ? AND shared_with_id = ?',
+      [req.params.id, req.params.userId]
+    );
+    res.json({ message: 'ยกเลิกการแชร์เรียบร้อยแล้ว' });
   } catch (err) {
     console.error('surveyController error:', err.message);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });

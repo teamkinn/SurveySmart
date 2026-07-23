@@ -48,13 +48,26 @@ export const useSurveyStore = defineStore('surveys', {
       if (s) s.status = 'active';
       const o = this.others.find(x => x.id === id);
       if (o) o.status = 'active';
+      const sh = this.shared.find(x => x.id === id);
+      if (sh) sh.status = 'active';
     },
     async remove(id) {
       await api.delete(`/surveys/${id}`);
       this.list = this.list.filter(s => s.id !== id);
     },
-    async share(id, email) {
-      await api.post(`/surveys/${id}/share`, { email });
+    async share(id, payload) {
+      await api.post(`/surveys/${id}/share`, payload);
+    },
+    async getShares(id) {
+      const { data } = await api.get(`/surveys/${id}/shares`);
+      return data;
+    },
+    async unshare(id, userId) {
+      await api.delete(`/surveys/${id}/share/${userId}`);
+    },
+    async searchUsers(q) {
+      const { data } = await api.get('/users/search', { params: { q } });
+      return data;
     },
   },
 });

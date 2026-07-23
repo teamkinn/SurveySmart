@@ -3,7 +3,7 @@
     <div class="page-title-row">
       <div>
         <div class="page-title">แชร์ให้ฉันดู</div>
-        <div class="page-title-sub">แบบสอบถามของผู้ใช้อื่นทั้งหมด — ดูได้อย่างเดียว</div>
+        <div class="page-title-sub">แบบสอบถามที่มีคนแชร์ให้คุณโดยตรง — ดูได้อย่างเดียว</div>
       </div>
     </div>
 
@@ -11,7 +11,7 @@
       👁️ สิทธิ์ <b>View Only</b> — ดูผลได้ ไม่สามารถแก้ไขหรือลบได้
     </div>
     <div v-else style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:12px;color:#dc2626;">
-      ⚙️ โหมด <b>Head Admin</b> — มีสิทธิ์เต็มกับทุกแบบสอบถาม
+      ⚙️ โหมด <b>Head Admin</b> — มีสิทธิ์เต็มกับแบบสอบถามที่แชร์มาให้
     </div>
 
     <div class="filter-bar">
@@ -28,22 +28,23 @@
       <button class="btn-sm btn-outline" @click="search = ''; statusFilter = ''">✕ ล้าง</button>
     </div>
 
-    <div style="margin-bottom:10px;" class="filter-result-count">แสดง {{ filtered.length }} จาก {{ surveyStore.others.length }} รายการ</div>
+    <div style="margin-bottom:10px;" class="filter-result-count">แสดง {{ filtered.length }} จาก {{ surveyStore.shared.length }} รายการ</div>
 
     <div v-if="filtered.length === 0" class="empty-state">
       <div class="es-icon">👁️</div>
-      <div class="es-title">ยังไม่มีแบบสอบถามของผู้ใช้อื่น</div>
+      <div class="es-title">ยังไม่มีใครแชร์แบบสอบถามให้คุณ</div>
+      <div class="es-sub">เมื่อมีคนกดแชร์แบบสอบถามให้คุณ จะแสดงที่นี่</div>
     </div>
     <div v-else class="survey-table-wrap">
       <table class="survey-table">
         <thead>
           <tr>
             <th>ชื่อแบบสอบถาม</th>
-            <th>เจ้าของ</th>
+            <th>แชร์โดย</th>
             <th>สถานะ</th>
             <th>ผู้ตอบ</th>
             <th>คะแนนเฉลี่ย</th>
-            <th>วันที่สร้าง</th>
+            <th>แชร์เมื่อ</th>
             <th>ดูผล</th>
           </tr>
         </thead>
@@ -54,7 +55,7 @@
             <td><span class="survey-badge" :class="badgeClass(s.status)">{{ badgeText(s.status) }}</span></td>
             <td><span style="font-weight:700;">{{ s.response_count || 0 }}</span></td>
             <td>{{ s.avg_score ? parseFloat(s.avg_score).toFixed(1) : '—' }}</td>
-            <td style="color:var(--text3);font-size:11px;">{{ formatDate(s.created_at) }}</td>
+            <td style="color:var(--text3);font-size:11px;">{{ formatDate(s.shared_at) }}</td>
             <td class="actions-cell">
               <button class="btn-sm btn-blue" @click="$router.push(`/surveys/${s.id}/responses`)">📊 ดูผล</button>
               <template v-if="isHeadAdmin">
@@ -89,7 +90,7 @@ const isHeadAdmin = computed(() => authStore.user?.role === 'head_admin');
 const editModalRef = ref(null);
 
 const filtered = computed(() =>
-  surveyStore.others.filter(s => {
+  surveyStore.shared.filter(s => {
     const q = search.value.toLowerCase();
     const ok = !q || s.title.toLowerCase().includes(q);
     const st = !statusFilter.value || s.status === statusFilter.value;

@@ -17,6 +17,8 @@ router.post('/', ctrl.create);
 router.put('/:id', ctrl.update);
 router.delete('/:id', ctrl.remove);
 router.patch('/:id/publish', ctrl.publish);
+router.get('/:id/shares', ctrl.shares);
 router.post('/:id/share', ctrl.share);
+router.delete('/:id/share/:userId', ctrl.unshare);
 
 module.exports = router;

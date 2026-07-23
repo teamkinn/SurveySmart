@@ -18,6 +18,7 @@ app.use(
 app.use(express.json({ limit: '100kb' }));
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/users', require('./routes/users'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/responses/public', require('./routes/publicResponses'));
 app.use('/api/surveys/:surveyId/responses', require('./routes/responses'));
