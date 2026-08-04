@@ -115,7 +115,12 @@ exports.submit = async (req, res) => {
         a.question_id,
         a.answer_text  ? String(a.answer_text).slice(0, 5000)  : null,
         a.answer_json  ? JSON.stringify(a.answer_json).slice(0, 10000) : null,
-        a.score !== undefined ? parseFloat(a.score) || null : null,
+        // isNaN check (not ||) — a genuine answer of 0 (e.g. a scale
+        // question configured with min: 0) must not be coerced to NULL
+        // just because 0 is falsy.
+        a.score !== undefined && a.score !== null && a.score !== '' && !isNaN(parseFloat(a.score))
+          ? parseFloat(a.score)
+          : null,
       ]);
       await conn.query(
         'INSERT INTO response_answers (response_id, question_id, answer_text, answer_json, score) VALUES ?',
@@ -131,6 +136,227 @@ exports.submit = async (req, res) => {
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   } finally {
     conn.release();
+  }
+};
+
+// Bulk-imports responses from a CSV file already parsed client-side into
+// { headers, rows }. Owner (or admin/head_admin) only — unlike viewing
+// (canAccessSurvey), a survey a user can merely see via sharing must not be
+// injectable with data.
+//
+// Column matching: each header is matched to a question by exact
+// (trimmed, case-insensitive) text match against question_text first;
+// any leftover headers are matched positionally against whichever
+// questions weren't already claimed by a text match, in order — the same
+// fallback strategy used for Google Forms sync
+// (see services/googleFormsSync.js buildQIdMap) so behavior stays
+// consistent across both import paths.
+//
+// Dedup: an optional id/response_id/external_id column is stored as
+// responses.external_id (scoped per survey). Re-importing a file that mixes
+// previously-imported rows with new ones silently skips rows whose ID was
+// already imported instead of duplicating them. Without that column,
+// nothing is deduped — every row always inserts as a new response.
+exports.importCsv = async (req, res) => {
+  try {
+    const surveyId = req.params.surveyId;
+    const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
+    const [[survey]] = await db.query(
+      isAdmin ? 'SELECT id FROM surveys WHERE id = ?' : 'SELECT id FROM surveys WHERE id = ? AND user_id = ?',
+      isAdmin ? [surveyId] : [surveyId, req.user.id]
+    );
+    if (!survey) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+
+    const { headers, rows } = req.body;
+    if (!Array.isArray(headers) || !Array.isArray(rows)) {
+      return res.status(400).json({ message: 'รูปแบบข้อมูล CSV ไม่ถูกต้อง' });
+    }
+    if (!rows.length) return res.status(400).json({ message: 'ไม่พบข้อมูลในไฟล์ CSV' });
+    if (rows.length > 5000) {
+      return res.status(400).json({ message: 'นำเข้าได้สูงสุด 5,000 แถวต่อครั้ง — กรุณาแบ่งไฟล์' });
+    }
+
+    const [questions] = await db.query(
+      'SELECT id, question_text, question_type, options_json FROM questions WHERE survey_id = ? ORDER BY section_number, sort_order',
+      [surveyId]
+    );
+    if (!questions.length) {
+      return res.status(400).json({ message: 'แบบสอบถามนี้ยังไม่มีคำถาม — ไม่สามารถนำเข้าคำตอบได้' });
+    }
+
+    const norm = s => String(s || '').trim().toLowerCase();
+
+    // Pass 1: match every header to a question by exact (trimmed,
+    // case-insensitive) text match — this runs BEFORE any "looks like a
+    // name column" guess below, so a survey whose first question literally
+    // is a name question (very common — "ชื่อ-นามสกุล") still gets that
+    // column matched as a real answer, not swallowed as name-only metadata.
+    const usedQuestionIds = new Set();
+    const colToQuestion = new Map(); // header index -> question row
+    headers.forEach((h, idx) => {
+      const q = questions.find(q => !usedQuestionIds.has(q.id) && norm(q.question_text) === norm(h));
+      if (q) { colToQuestion.set(idx, q); usedQuestionIds.add(q.id); }
+    });
+
+    // Pass 2: among headers NOT already matched to a question, ones that
+    // look like a dedicated respondent-name or row-ID column supply
+    // responses.respondent_name / responses.external_id as metadata only
+    // (excluded from positional matching below, since neither is an answer
+    // to anything). The ID column is optional — if the CSV came from
+    // another system that already assigns each response a stable ID (e.g.
+    // "response_id"), including it here lets a later re-import of a file
+    // that mixes old and new rows skip the old ones instead of duplicating
+    // them (see the ON DUPLICATE KEY handling below).
+    const nameColIdx = headers.findIndex((h, idx) => !colToQuestion.has(idx) && /^(respondent[_ ]?name|ชื่อ|name)/i.test(norm(h)));
+    const idAliases = new Set(['id', 'response_id', 'external_id', 'row_id']);
+    const idColIdx = headers.findIndex((h, idx) => !colToQuestion.has(idx) && idAliases.has(norm(h).replace(/[\s-]+/g, '_')));
+
+    // Pass 3: any remaining unmatched headers (excluding the name/ID
+    // columns, if any) are matched positionally against whichever
+    // questions weren't already claimed by a text match, in order — the
+    // same fallback strategy used for Google Forms sync (see
+    // services/googleFormsSync.js buildQIdMap) so behavior stays
+    // consistent across both import paths.
+    const unmatchedQuestions = questions.filter(q => !usedQuestionIds.has(q.id));
+    let posPtr = 0;
+    headers.forEach((h, idx) => {
+      if (idx === nameColIdx || idx === idColIdx || colToQuestion.has(idx)) return;
+      const q = unmatchedQuestions[posPtr++];
+      if (q) colToQuestion.set(idx, q);
+    });
+
+    if (!colToQuestion.size) {
+      return res.status(400).json({
+        message: 'ไม่พบคอลัมน์ที่ตรงกับคำถามในแบบสอบถามนี้ — ตรวจสอบว่าหัวคอลัมน์ตรงกับข้อความคำถาม',
+      });
+    }
+
+    // No dedicated name column? Fall back to whichever matched question
+    // looks like a name question — mirrors the convention already used for
+    // Google Forms sync (services/googleFormsSync.js pullFormResponses):
+    // a short/para question whose text contains "ชื่อ". Its value still
+    // gets inserted normally as an answer too; this only decides what also
+    // gets copied into responses.respondent_name.
+    let nameFromQuestionIdx = -1;
+    if (nameColIdx === -1) {
+      for (const [idx, q] of colToQuestion) {
+        if (['short', 'para'].includes(q.question_type) && q.question_text.includes('ชื่อ')) {
+          nameFromQuestionIdx = idx;
+          break;
+        }
+      }
+    }
+
+    const parseJsonSafe = v => {
+      if (!v) return null;
+      if (typeof v !== 'string') return v;
+      try { return JSON.parse(v); } catch { return null; }
+    };
+
+    const conn = await db.getConnection();
+    let imported = 0, skipped = 0, duplicates = 0;
+    try {
+      await conn.beginTransaction();
+
+      for (const row of rows) {
+        const nameSrcIdx = nameColIdx >= 0 ? nameColIdx : nameFromQuestionIdx;
+        const rawName = nameSrcIdx >= 0 ? row[nameSrcIdx] : '';
+        const name = String(rawName ?? '').trim().slice(0, 200) || 'ไม่ระบุ';
+        const externalId = idColIdx >= 0 ? (String(row[idColIdx] ?? '').trim().slice(0, 191) || null) : null;
+
+        const answerRows = [];
+        const scores = [];
+
+        for (const [idx, q] of colToQuestion) {
+          const raw = row[idx];
+          const cell = raw == null ? '' : String(raw).trim();
+          if (!cell) continue;
+
+          let answerText = null, answerJson = null, score = null;
+          const opts = parseJsonSafe(q.options_json);
+
+          if (q.question_type === 'checkbox') {
+            const values = cell.split(';').map(v => v.trim()).filter(Boolean);
+            answerText = values.join(', ');
+            answerJson = JSON.stringify({ values });
+          } else if (['scale', 'star'].includes(q.question_type)) {
+            const n = parseFloat(cell);
+            if (!isNaN(n)) {
+              score = n;
+              answerJson = JSON.stringify({ score: n });
+            }
+            answerText = cell;
+          } else if (['radio', 'dropdown'].includes(q.question_type)) {
+            answerText = cell;
+            answerJson = JSON.stringify({ value: cell });
+            const m = cell.match(/\((\d+(?:\.\d+)?)\)\s*$/);
+            if (m) {
+              score = parseFloat(m[1]);
+            } else if (Array.isArray(opts) && opts.length > 1) {
+              const oi = opts.indexOf(cell);
+              if (oi !== -1) score = oi + 1;
+            }
+          } else {
+            // short / para / date / time / file / mcgrid / cbgrid — grid
+            // answers aren't reconstructable from a single flat CSV cell,
+            // so they're stored as plain text rather than skipped outright.
+            answerText = cell;
+          }
+
+          answerRows.push([q.id, answerText, answerJson, score]);
+          if (score != null && !isNaN(score)) scores.push(score);
+        }
+
+        if (!answerRows.length) { skipped++; continue; }
+
+        const overall = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+
+        let responseId;
+        try {
+          const [rResult] = await conn.query(
+            'INSERT INTO responses (survey_id, respondent_name, overall_score, external_id) VALUES (?,?,?,?)',
+            [surveyId, name, overall, externalId]
+          );
+          responseId = rResult.insertId;
+        } catch (e) {
+          // A duplicate (survey_id, external_id) means this row's ID was
+          // already imported in a previous run — MySQL doesn't poison the
+          // rest of the transaction on a duplicate-key error, so this is
+          // safe to catch and keep going rather than aborting the whole
+          // import (mirrors the same pattern used for Google Forms sync —
+          // see services/googleFormsSync.js pullFormResponses).
+          if (e.code === 'ER_DUP_ENTRY' && externalId != null) {
+            duplicates++;
+            continue;
+          }
+          throw e;
+        }
+
+        await conn.query(
+          'INSERT INTO response_answers (response_id, question_id, answer_text, answer_json, score) VALUES ?',
+          [answerRows.map(([qid, text, json, score]) => [responseId, qid, text, json, score])]
+        );
+        imported++;
+      }
+
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+
+    res.json({
+      imported,
+      duplicates,
+      skipped,
+      matchedColumns: colToQuestion.size,
+      totalQuestions: questions.length,
+    });
+  } catch (err) {
+    console.error('responses.importCsv error:', err.message);
+    res.status(500).json({ message: 'นำเข้าไฟล์ CSV ไม่สำเร็จ' });
   }
 };
 

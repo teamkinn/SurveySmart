@@ -44,6 +44,21 @@ test('verifyPendingState rejects a state that was never registered', () => {
   assert.equal(svc.verifyPendingState('totally-made-up-state'), false);
 });
 
+test('storeTokens — auto-expires unclaimed tokens after ttlMs so an abandoned OAuth flow does not leak credentials forever (regression test)', async () => {
+  const state = 'state-abandoned-flow';
+  svc.registerPendingState(state, 55);
+  svc.storeTokens(state, { access_token: 'tok-for-55', refresh_token: 'refresh-for-55' }, 10);
+
+  // Tokens are present immediately after storing (normal case).
+  assert.equal(svc.hasTokens(state, 55), true);
+
+  // ...but if nothing ever calls removeTokens() (e.g. the tab was closed
+  // right after consent), they must not live in memory forever.
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(svc.hasTokens(state, 55), false);
+  assert.equal(svc.getTokens(state, 55), undefined);
+});
+
 test('hasTokens — powers the oauth-status polling endpoint; true only for the owning user once tokens exist', () => {
   const state = 'poll-state-1';
   svc.registerPendingState(state, 11);

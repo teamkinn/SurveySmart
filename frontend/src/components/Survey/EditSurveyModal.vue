@@ -23,7 +23,7 @@
 
           <div v-if="isSynced" style="margin-top:6px;background:rgba(26,86,160,.06);border:1px solid rgba(26,86,160,.18);border-radius:var(--r);padding:10px 14px;font-size:12px;color:var(--royal);">
             🔗 แบบสอบถามนี้ซิงค์กับ Google Forms — แก้ไขคำถามได้ที่
-            <a :href="googleFormUrl" target="_blank" style="color:var(--royal);font-weight:700;">Google Forms</a>
+            <a :href="googleFormUrl" target="_blank" rel="noopener noreferrer" style="color:var(--royal);font-weight:700;">Google Forms</a>
             เท่านั้น เพื่อไม่ให้ข้อมูลไม่ตรงกับฟอร์มจริงที่ผู้ตอบเห็น
           </div>
 

@@ -52,19 +52,19 @@
             <td style="font-size:11px;color:var(--text3);">{{ formatDate(u.created_at) }}</td>
             <td class="actions-cell">
               <button v-if="isHeadAdmin && u.id !== self.id && u.role === 'user'" class="icon-btn icon-btn-green"
-                      title="เลื่อนเป็น Admin" aria-label="เลื่อนเป็น Admin" @click="setRole(u, 'admin')">
+                      title="เลื่อนเป็น Admin" aria-label="เลื่อนเป็น Admin" :disabled="isPending(u.id)" @click="setRole(u, 'admin')">
                 <span class="tri-up"></span>
               </button>
               <button v-if="isHeadAdmin && u.id !== self.id && u.role === 'admin'" class="icon-btn icon-btn-red"
-                      title="ลดเป็น User" aria-label="ลดเป็น User" @click="setRole(u, 'user')">
+                      title="ลดเป็น User" aria-label="ลดเป็น User" :disabled="isPending(u.id)" @click="setRole(u, 'user')">
                 <span class="tri-down"></span>
               </button>
               <button v-if="isHeadAdmin && u.id !== self.id && u.is_active" class="icon-btn icon-btn-amber"
-                      title="ระงับการใช้งาน" aria-label="ระงับการใช้งาน" @click="setStatus(u, false)">⛔</button>
+                      title="ระงับการใช้งาน" aria-label="ระงับการใช้งาน" :disabled="isPending(u.id)" @click="setStatus(u, false)">⛔</button>
               <button v-if="isHeadAdmin && u.id !== self.id && !u.is_active" class="icon-btn icon-btn-green"
-                      title="เปิดใช้งาน" aria-label="เปิดใช้งาน" @click="setStatus(u, true)">✅</button>
+                      title="เปิดใช้งาน" aria-label="เปิดใช้งาน" :disabled="isPending(u.id)" @click="setStatus(u, true)">✅</button>
               <button v-if="isHeadAdmin && u.id !== self.id" class="icon-btn icon-btn-delete"
-                      title="ลบบัญชี" aria-label="ลบบัญชี" @click="deleteUser(u)"><span class="delete-icon">🗑</span></button>
+                      title="ลบบัญชี" aria-label="ลบบัญชี" :disabled="isPending(u.id)" @click="deleteUser(u)"><span class="delete-icon">🗑</span></button>
               <span v-if="u.id === self.id" style="color:var(--text3);">—</span>
             </td>
           </tr>
@@ -106,8 +106,8 @@
             <td style="font-size:11px;color:var(--text3);">{{ formatDate(s.created_at) }}</td>
             <td class="actions-cell">
               <button class="btn-sm btn-blue" @click="$router.push(`/surveys/${s.id}/responses`)">📊 ดูผล</button>
-              <button v-if="isHeadAdmin && s.status === 'draft'" class="btn-sm btn-outline" @click="publishSurvey(s)">🚀 เผยแพร่</button>
-              <button v-if="isHeadAdmin" class="btn-sm btn-red" @click="removeSurvey(s)">🗑</button>
+              <button v-if="isHeadAdmin && s.status === 'draft'" class="btn-sm btn-outline" :disabled="isPending(s.id)" @click="publishSurvey(s)">🚀 เผยแพร่</button>
+              <button v-if="isHeadAdmin" class="btn-sm btn-red" :disabled="isPending(s.id)" @click="removeSurvey(s)">🗑</button>
             </td>
           </tr>
         </tbody>
@@ -117,14 +117,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, inject } from 'vue';
+import { ref, computed, onMounted, inject } from 'vue';
 import { useAuthStore } from '@/stores/auth';
 import api from '@/api';
 
 const authStore = useAuthStore();
 const showToast = inject('showToast');
-const self = authStore.user;
-const isHeadAdmin = self?.role === 'head_admin';
+// computed (not a one-time snapshot) — authStore.user is reactive, so if it
+// is ever reassigned while this view stays mounted, `self`/`isHeadAdmin`
+// (which gate every management button below) must stay in sync with it.
+const self = computed(() => authStore.user);
+const isHeadAdmin = computed(() => self.value?.role === 'head_admin');
 
 const tab = ref('users');
 
@@ -155,6 +158,8 @@ async function loadUsers() {
   try {
     const { data } = await api.get('/admin/users');
     users.value = data;
+  } catch (e) {
+    showToast(e.response?.data?.message || 'โหลดรายชื่อผู้ใช้ไม่สำเร็จ');
   } finally {
     loadingUsers.value = false;
   }
@@ -165,41 +170,70 @@ async function loadSurveys() {
   try {
     const { data } = await api.get('/admin/surveys');
     surveys.value = data;
+  } catch (e) {
+    showToast(e.response?.data?.message || 'โหลดรายการแบบสอบถามไม่สำเร็จ');
   } finally {
     loadingSurveys.value = false;
   }
 }
 
+// Tracks which user/survey ids currently have a mutation in flight, so the
+// corresponding action buttons can be disabled — otherwise a fast
+// double-click fires the request twice before the first response comes back.
+const pendingIds = ref(new Set());
+function isPending(id) { return pendingIds.value.has(id); }
+async function withPending(id, fn) {
+  if (pendingIds.value.has(id)) return;
+  pendingIds.value.add(id);
+  try {
+    await fn();
+  } catch (e) {
+    showToast(e.response?.data?.message || 'เกิดข้อผิดพลาด กรุณาลองอีกครั้ง');
+  } finally {
+    pendingIds.value.delete(id);
+  }
+}
+
 async function setRole(u, role) {
-  await api.patch(`/admin/users/${u.id}/role`, { role });
-  u.role = role;
-  showToast(`เปลี่ยน ${u.username} เป็น ${role} แล้ว`);
+  await withPending(u.id, async () => {
+    await api.patch(`/admin/users/${u.id}/role`, { role });
+    u.role = role;
+    showToast(`เปลี่ยน ${u.username} เป็น ${role} แล้ว`);
+  });
 }
 
 async function setStatus(u, active) {
-  await api.patch(`/admin/users/${u.id}/status`, { is_active: active });
-  u.is_active = active ? 1 : 0;
-  showToast(active ? `เปิดใช้งานบัญชี ${u.username} แล้ว` : `ระงับบัญชี ${u.username} แล้ว`);
+  await withPending(u.id, async () => {
+    await api.patch(`/admin/users/${u.id}/status`, { is_active: active });
+    u.is_active = active ? 1 : 0;
+    showToast(active ? `เปิดใช้งานบัญชี ${u.username} แล้ว` : `ระงับบัญชี ${u.username} แล้ว`);
+  });
 }
 
 async function deleteUser(u) {
   if (!confirm(`ลบผู้ใช้ "${u.username}" หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
-  await api.delete(`/admin/users/${u.id}`);
-  users.value = users.value.filter(x => x.id !== u.id);
-  showToast('ลบผู้ใช้เรียบร้อยแล้ว');
+  await withPending(u.id, async () => {
+    await api.delete(`/admin/users/${u.id}`);
+    users.value = users.value.filter(x => x.id !== u.id);
+    showToast('ลบผู้ใช้เรียบร้อยแล้ว');
+  });
 }
 
 async function publishSurvey(s) {
-  await api.patch(`/surveys/${s.id}/publish`);
-  s.status = 'active';
-  showToast(`เผยแพร่ "${s.title}" แล้ว 🚀`);
+  await withPending(s.id, async () => {
+    await api.patch(`/surveys/${s.id}/publish`);
+    s.status = 'active';
+    showToast(`เผยแพร่ "${s.title}" แล้ว 🚀`);
+  });
 }
 
 async function removeSurvey(s) {
   if (!confirm(`ลบแบบสอบถาม "${s.title}" หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้`)) return;
-  await api.delete(`/surveys/${s.id}`);
-  surveys.value = surveys.value.filter(x => x.id !== s.id);
-  showToast('ลบแบบสอบถามแล้ว');
+  await withPending(s.id, async () => {
+    await api.delete(`/surveys/${s.id}`);
+    surveys.value = surveys.value.filter(x => x.id !== s.id);
+    showToast('ลบแบบสอบถามแล้ว');
+  });
 }
 
 function formatDate(d) {

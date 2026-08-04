@@ -1,5 +1,10 @@
 const tokenStore = new Map();
 const pendingStates = new Set();
+// How long a completed OAuth consent's tokens stay in memory waiting to be
+// claimed (via getTokens/hasTokens) by the create-form/import-form/
+// sync-responses flow that requested them, before storeTokens()'s own
+// cleanup timer removes them — see storeTokens() below.
+const TOKEN_TTL_MS = 15 * 60 * 1000;
 // Tracks which user initiated each OAuth state, so a token obtained under
 // one user's flow can't be claimed by a different authenticated user who
 // happens to learn or guess the state value (states are short, random
@@ -40,8 +45,21 @@ function verifyPendingState(state) {
   return true;
 }
 
-function storeTokens(state, tokens) {
+function storeTokens(state, tokens, ttlMs = TOKEN_TTL_MS) {
   tokenStore.set(state, tokens);
+  // If the flow that requested these tokens never finishes after the user
+  // completes Google's consent screen (closed tab, network drop, a frontend
+  // error before the popup can hand off) nothing else ever calls
+  // removeTokens() for this state. Without this timer the refresh_token — a
+  // long-lived credential — and its ownership mapping would stay in process
+  // memory indefinitely: an unbounded memory leak and needlessly long
+  // retention of a real credential. Harmless no-op if removeTokens() (the
+  // normal successful path) already deleted this state by the time it fires.
+  const cleanup = setTimeout(() => {
+    tokenStore.delete(state);
+    stateOwners.delete(state);
+  }, ttlMs);
+  cleanup.unref?.();
 }
 // Only returns tokens if `state` was originally registered by `userId` —
 // prevents one authenticated user from riding another user's in-flight

@@ -120,6 +120,39 @@ test('submit — accepts a valid submission with all required answers present', 
   assert.equal(res.statusCode, 201);
 });
 
+test('submit — a genuine answer of 0 (e.g. a scale question with min: 0) is stored as 0, not NULL (regression test)', async () => {
+  const originalGetConnection = db.getConnection;
+  let insertedAnswerValues = null;
+  db.getConnection = async () => ({
+    beginTransaction: async () => {},
+    query: async (sql, params) => {
+      if (sql.includes('FROM surveys') && sql.includes("status = 'active'")) return [[{ id: 1 }]];
+      if (sql.includes('is_required = 1')) return [[]];
+      if (sql.includes('INSERT INTO response_answers')) {
+        insertedAnswerValues = params[0];
+        return [{}];
+      }
+      return [{ insertId: 99 }];
+    },
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+  });
+
+  const req = {
+    params: { surveyId: '1' },
+    body: { respondent_name: 'Tester', answers: [{ question_id: 10, score: 0 }] },
+    ip: '127.0.0.1',
+  };
+  const res = mockRes();
+  await ctrl.submit(req, res);
+  db.getConnection = originalGetConnection;
+
+  assert.equal(res.statusCode, 201);
+  // Column order: [responseId, question_id, answer_text, answer_json, score]
+  assert.equal(insertedAnswerValues[0][4], 0);
+});
+
 test('submit — rejects submissions to a survey that is not active (closed/draft)', async () => {
   const originalGetConnection = db.getConnection;
   db.getConnection = async () => ({

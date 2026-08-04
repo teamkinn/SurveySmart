@@ -80,14 +80,21 @@
           <label class="filter-label">ถึงวันที่</label>
           <input type="date" v-model="filterTo" class="filter-input" />
         </div>
+        <div class="filter-group" v-if="categoricalCharts.length > 1">
+          <label class="filter-label">คำถามที่กรอง</label>
+          <select v-model.number="filterQuestionId" class="filter-select" style="min-width:140px;">
+            <option v-for="c in categoricalCharts" :key="c.question_id" :value="c.question_id">{{ c.question_text }}</option>
+          </select>
+        </div>
         <div class="filter-group" v-if="genderOptions.length">
-          <label class="filter-label">เพศ</label>
+          <label class="filter-label">{{ selectedCategoricalQuestionText }}</label>
           <select v-model="filterGender" class="filter-select" style="min-width:120px;">
             <option value="">ทั้งหมด</option>
             <option v-for="opt in genderOptions" :key="opt" :value="opt">{{ opt }}</option>
           </select>
         </div>
         <div style="flex:1;"></div>
+        <button v-if="!isShared" @click="openImportCsv" class="export-btn">📤 นำเข้าคำตอบ CSV</button>
         <button @click="exportCSV" class="export-btn">📥 Export CSV</button>
       </div>
 
@@ -259,17 +266,26 @@
       </div>
 
     </div>
+
+    <!-- IMPORT RESPONSES CSV MODAL -->
+    <ImportResponsesCsvModal
+      v-if="survey"
+      ref="importCsvRef"
+      :survey-id="survey.id"
+      @imported="onResponsesImported"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, inject } from 'vue';
+import { ref, computed, watch, onMounted, inject } from 'vue';
 import { useRoute } from 'vue-router';
 import { useSurveyStore } from '@/stores/surveys';
 import { useAuthStore }   from '@/stores/auth';
 import api from '@/api';
 import { badgeClass, badgeText, interpClass, interpText } from '@/composables/useSurveyStatus';
 import { openGoogleAuthPopup } from '@/composables/useGoogleOAuthPopup';
+import ImportResponsesCsvModal from '@/components/Survey/ImportResponsesCsvModal.vue';
 
 const route = useRoute();
 const surveyStore = useSurveyStore();
@@ -280,6 +296,7 @@ const responses = ref([]);
 const charts = ref([]);
 const activeTab = ref('list');
 const syncing = ref(false);
+const importCsvRef = ref(null);
 
 const filterFrom = ref('');
 const filterTo = ref('');
@@ -318,20 +335,48 @@ const scoreBreakdown = computed(() => {
   }));
 });
 
+// Which categorical question the "เพศ" (or whatever it actually is) filter
+// applies to. Bound to a real question_id instead of guessed — previously
+// the dropdown options came from categoricalCharts[0] while the actual
+// filtering in filteredResponses() independently guessed "the first radio
+// answer on this response whose label isn't a score", which is a different
+// question whenever a survey has more than one non-score radio/checkbox
+// question (e.g. "เพศ" AND "แผนก/หน่วยงาน") — the two could silently
+// mismatch and filter on the wrong question. Defaults to the first
+// categorical chart (same default the UI always had), but if a survey has
+// more than one, the template below lets the user pick explicitly.
+const filterQuestionId = ref(null);
+watch(categoricalCharts, (list) => {
+  if (!list.some(c => c.question_id === filterQuestionId.value)) {
+    filterQuestionId.value = list[0]?.question_id ?? null;
+    filterGender.value = '';
+  }
+}, { immediate: true });
+
+const selectedCategoricalChart = computed(() =>
+  categoricalCharts.value.find(c => c.question_id === filterQuestionId.value) || null
+);
+const selectedCategoricalQuestionText = computed(() => selectedCategoricalChart.value?.question_text || 'เพศ');
+
 const genderOptions = computed(() => {
-  const cat = categoricalCharts.value[0];
+  const cat = selectedCategoricalChart.value;
   if (!cat) return [];
   return cat.data.filter(d => d.count > 0).map(d => d.label);
 });
 
 const filteredResponses = computed(() =>
   responses.value.filter(r => {
-    if (filterFrom.value && r.submitted_at < filterFrom.value) return false;
-    if (filterTo.value   && r.submitted_at.slice(0, 10) > filterTo.value) return false;
-    if (filterGender.value) {
+    // .slice(0, 10) on both ends — submitted_at is a full ISO timestamp;
+    // comparing it against a plain YYYY-MM-DD date input value needs both
+    // sides truncated to the date portion the same way, or the "from" side
+    // silently compares a full timestamp against a bare date.
+    const day = (r.submitted_at || '').slice(0, 10);
+    if (filterFrom.value && day < filterFrom.value) return false;
+    if (filterTo.value   && day > filterTo.value) return false;
+    if (filterGender.value && filterQuestionId.value != null) {
       const answers = Array.isArray(r.answers) ? r.answers : [];
-      const genderAns = answers.find(a => a.question_type === 'radio' && !isScoreLabel(a.answer_text || ''));
-      if (!genderAns || genderAns.answer_text !== filterGender.value) return false;
+      const ans = answers.find(a => a.question_id === filterQuestionId.value);
+      if (!ans || ans.answer_text !== filterGender.value) return false;
     }
     return true;
   })
@@ -489,6 +534,14 @@ function cancelSync() {
   activeAuthPopup?.cancel();
   activeAuthPopup = null;
   syncing.value = false;
+}
+
+function openImportCsv() {
+  importCsvRef.value?.open();
+}
+
+async function onResponsesImported() {
+  await Promise.all([loadResponses(), surveyStore.fetchAll()]);
 }
 
 onMounted(async () => {

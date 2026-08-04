@@ -246,7 +246,7 @@
             <div class="gf-done-center">
               <div class="gf-done-check">✓</div>
               <p class="gf-done-title">สร้าง Google Form สำเร็จ!</p>
-              <a :href="gfFormUrl" target="_blank" class="gf-done-link">{{ gfFormUrl }}</a>
+              <a :href="gfFormUrl" target="_blank" rel="noopener noreferrer" class="gf-done-link">{{ gfFormUrl }}</a>
               <div class="gf-qr-block">
                 <p class="gf-qr-label">QR Code สำหรับแชร์แบบฟอร์ม</p>
                 <img :src="gfQrDataUrl" alt="QR Code" class="gf-qr-img">

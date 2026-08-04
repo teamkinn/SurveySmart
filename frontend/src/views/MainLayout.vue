@@ -29,6 +29,7 @@
         </RouterLink>
       </div>
       <div class="top-nav-right">
+        <button class="btn-import" @click="openImportCsv">⬇ นำเข้า CSV</button>
         <button class="btn-import" @click="openImport">⬇ นำเข้า Google Forms</button>
         <button class="btn-new" @click="openBuilder">＋ สร้างแบบสอบถาม</button>
       </div>
@@ -44,6 +45,9 @@
 
     <!-- IMPORT MODAL -->
     <ImportSurveyModal ref="importRef" @imported="onSurveyImported" />
+
+    <!-- IMPORT CSV MODAL -->
+    <ImportCsvModal ref="importCsvRef" @imported="onSurveyImported" />
   </div>
 </template>
 
@@ -54,6 +58,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useSurveyStore } from '@/stores/surveys';
 import SurveyBuilder from '@/components/Survey/SurveyBuilder.vue';
 import ImportSurveyModal from '@/components/Survey/ImportSurveyModal.vue';
+import ImportCsvModal from '@/components/Survey/ImportCsvModal.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -62,6 +67,7 @@ const showToast = inject('showToast');
 
 const builderRef = ref(null);
 const importRef = ref(null);
+const importCsvRef = ref(null);
 
 const isHeadAdmin = computed(() => authStore.user?.role === 'head_admin');
 const isAdmin = computed(() => ['admin', 'head_admin'].includes(authStore.user?.role));
@@ -98,6 +104,10 @@ function openBuilder() {
 
 function openImport() {
   importRef.value?.open();
+}
+
+function openImportCsv() {
+  importCsvRef.value?.open();
 }
 
 function onSurveyCreated() {

@@ -7,7 +7,7 @@ const genToken = () => randomBytes(32).toString('hex');
 // Forms sync fields) so list/create/update never drift into returning
 // different shapes for the same survey.
 const SURVEY_SUMMARY_JOIN = `
-  SELECT v.*, s.google_form_url, s.google_form_id, s.share_token, s.last_synced_at, s.shared_all,
+  SELECT v.*, s.google_form_url, s.google_form_id, s.share_token, s.last_synced_at, s.shared_all, s.album_id,
          (s.google_refresh_token IS NOT NULL) AS auto_sync_enabled
   FROM v_survey_summary v
   JOIN surveys s ON s.id = v.id
@@ -28,7 +28,7 @@ exports.list = async (req, res) => {
 const SURVEY_COLUMNS = `
   id, user_id, title, description, status, target_responses, close_date,
   google_form_url, google_form_id, (google_refresh_token IS NOT NULL) AS auto_sync_enabled,
-  last_synced_at, share_token, view_count, shared_all, created_at, updated_at,
+  last_synced_at, share_token, view_count, shared_all, album_id, created_at, updated_at,
   (SELECT COUNT(*) FROM responses r WHERE r.survey_id = surveys.id) AS response_count
 `;
 

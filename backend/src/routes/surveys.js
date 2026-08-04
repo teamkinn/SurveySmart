@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/surveyController');
+const albumCtrl = require('../controllers/albumController');
 const auth = require('../middleware/auth');
 const createPublicLimiter = require('../middleware/publicLimiter');
 
@@ -21,5 +22,6 @@ router.get('/:id/shares', ctrl.shares);
 router.post('/:id/share', ctrl.share);
 router.delete('/:id/share/:userId', ctrl.unshare);
 router.patch('/:id/share-all', ctrl.setSharedAll);
+router.patch('/:id/album', albumCtrl.setSurveyAlbum);
 
 module.exports = router;

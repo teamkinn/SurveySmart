@@ -202,8 +202,10 @@ async function submit() {
   for (const q of survey.value.questions) {
     if (!q.is_required) continue;
     const a = answers[q.id];
+    // == null (not truthiness) — a genuine answer of 0 on a scale question
+    // configured with min: 0 must count as answered, not "still empty".
     const empty = q.question_type === 'checkbox' ? !a.values.length
-                : ['star','scale'].includes(q.question_type) ? !a.score
+                : ['star','scale'].includes(q.question_type) ? a.score == null
                 : ['radio','dropdown'].includes(q.question_type) ? !a.value
                 : !a.text?.trim();
     if (empty) { error.value = `กรุณาตอบคำถาม: "${q.question_text}"`; return; }

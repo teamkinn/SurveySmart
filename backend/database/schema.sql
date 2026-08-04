@@ -47,7 +47,24 @@ CREATE TABLE password_resets (
 ) ENGINE=InnoDB;
 
 -- ─────────────────────────────────────────────
---  3. SURVEYS
+--  3. SURVEY ALBUMS  (user-defined categories, drag/drop from Surveys page)
+--     Declared before SURVEYS so surveys.album_id can reference it —
+--     one survey belongs to at most one album at a time.
+-- ─────────────────────────────────────────────
+CREATE TABLE survey_albums (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id    INT UNSIGNED NOT NULL,
+  name       VARCHAR(100) NOT NULL,
+  color      VARCHAR(7)   NOT NULL DEFAULT '#1A56A0',
+  created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (id),
+  KEY idx_user (user_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ─────────────────────────────────────────────
+--  4. SURVEYS
 -- ─────────────────────────────────────────────
 CREATE TABLE surveys (
   id                   INT UNSIGNED     NOT NULL AUTO_INCREMENT,
@@ -64,17 +81,20 @@ CREATE TABLE surveys (
   share_token          VARCHAR(64)      UNIQUE,   -- random token for public link / QR code
   view_count           INT UNSIGNED     DEFAULT 0, -- how many times the public link was opened
   shared_all           TINYINT(1)       NOT NULL DEFAULT 0, -- owner opted this survey into "visible to every user" (vs. per-user survey_shares rows)
+  album_id             INT UNSIGNED     NULL, -- which survey_albums row this survey is categorized under, if any
   created_at           TIMESTAMP        DEFAULT CURRENT_TIMESTAMP,
   updated_at           TIMESTAMP        DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
   PRIMARY KEY (id),
   KEY idx_user_status    (user_id, status),
   KEY idx_share_token    (share_token),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  KEY idx_album          (album_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_surveys_album_id FOREIGN KEY (album_id) REFERENCES survey_albums(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ─────────────────────────────────────────────
---  4. QUESTIONS
+--  5. QUESTIONS
 --     section_number: 1=ข้อมูลส่วนตัว
 --                     2=ความพึงพอใจ
 --                     3=ข้อเสนอแนะ
@@ -116,7 +136,7 @@ CREATE TABLE questions (
 ) ENGINE=InnoDB;
 
 -- ─────────────────────────────────────────────
---  5. RESPONSES  (one row per survey submission)
+--  6. RESPONSES  (one row per survey submission)
 -- ─────────────────────────────────────────────
 CREATE TABLE responses (
   id               INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -125,16 +145,20 @@ CREATE TABLE responses (
   overall_score    DECIMAL(5,2),   -- avg of all numeric answers (computed on insert)
   ip_address       VARCHAR(45),    -- IPv4 or IPv6, optional
   google_response_id VARCHAR(128), -- Google Forms response ID, for dedup on sync (NULL for native responses)
+  external_id      VARCHAR(191),   -- caller-supplied ID from a CSV import's id/response_id column, for dedup on
+                                    -- re-import (NULL for native submissions and rows imported without an ID column —
+                                    -- MySQL unique keys treat each NULL as distinct, so those never collide)
   submitted_at     TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
 
   PRIMARY KEY (id),
   KEY idx_survey_time (survey_id, submitted_at),
   UNIQUE KEY uq_survey_google_resp (survey_id, google_response_id),
+  UNIQUE KEY uq_survey_external_id (survey_id, external_id),
   FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ─────────────────────────────────────────────
---  6. RESPONSE ANSWERS  (one row per question per submission)
+--  7. RESPONSE ANSWERS  (one row per question per submission)
 --     Enables per-question x̄ / S.D. analytics
 -- ─────────────────────────────────────────────
 CREATE TABLE response_answers (
@@ -160,7 +184,7 @@ CREATE TABLE response_answers (
 ) ENGINE=InnoDB;
 
 -- ─────────────────────────────────────────────
---  7. SURVEY SHARES  (user-to-user, view-only)
+--  8. SURVEY SHARES  (user-to-user, view-only)
 -- ─────────────────────────────────────────────
 CREATE TABLE survey_shares (
   id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
