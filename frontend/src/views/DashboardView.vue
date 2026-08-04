@@ -110,10 +110,15 @@
           </div>
           <div v-if="!responses.length" style="color:var(--text3);font-size:14px;">ยังไม่มีคำตอบ</div>
           <div v-else class="trend-chart">
-            <div v-for="d in trend" :key="d.dateStr" class="trend-col">
+            <div
+              v-for="d in trend"
+              :key="d.dateStr"
+              class="trend-col"
+              :title="`${d.label} — ${d.count} คำตอบ`"
+            >
               <div class="trend-bar-wrap">
                 <div class="trend-count-top">{{ d.count || '' }}</div>
-                <div class="trend-bar" :style="{ height: trendMaxCount ? Math.max(d.count / trendMaxCount * 80, d.count ? 4 : 0) + 'px' : '0px' }"></div>
+                <div class="trend-bar" :style="{ height: trendMaxCount ? Math.max(d.count / trendMaxCount * 68, d.count ? 4 : 0) + 'px' : '0px' }"></div>
               </div>
               <div class="trend-label">{{ d.label }}</div>
             </div>
@@ -464,10 +469,23 @@ onMounted(() => surveyStore.fetchAll());
 .range-toggle button.sel { background: var(--navy); border-color: var(--navy); color: #fff; }
 
 /* ── 7/30/all-day trend ── */
-.trend-chart { display: flex; align-items: flex-end; gap: 6px; margin-top: 14px; padding: 0 4px; height: 100px; overflow-x: auto; }
-.trend-col { flex: 1; min-width: 18px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+/* min-width was 18px, too narrow for a 2-digit count label (~11px bold
+   font needs ~16-18px on its own) — at that width the label had no room
+   to breathe and visually ran into the neighboring bar/label on 30-day and
+   "ทั้งหมด" views. Widening the floor so labels always fit, and letting
+   overflow-x:auto (already set below) handle scrolling for many-day
+   ranges instead of squeezing columns past where text still fits. */
+/* Setting only overflow-x (not overflow-y) makes the browser compute
+   overflow-y as "auto" too (per spec: if one axis is non-visible, a
+   "visible" other axis becomes "auto") — so the tallest bar's label,
+   which sits just ~3px under this box's fixed height, was getting clipped
+   off instead of rendering. overflow-y: visible turns that back off, and
+   the bar's own max height (JS below) is capped at 68px instead of 80px
+   so the label always has clear headroom even without relying on that. */
+.trend-chart { display: flex; align-items: flex-end; gap: 8px; margin-top: 14px; padding: 0 4px; height: 100px; overflow-x: auto; overflow-y: visible; }
+.trend-col { flex: 1; min-width: 30px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .trend-bar-wrap { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100px; width: 100%; }
-.trend-count-top { font-size: 11px; font-weight: 700; color: var(--royal); margin-bottom: 3px; min-height: 14px; }
+.trend-count-top { font-size: 11px; font-weight: 700; color: var(--royal); margin-bottom: 3px; min-height: 14px; white-space: nowrap; }
 .trend-bar { width: 70%; background: var(--royal); border-radius: 4px 4px 0 0; min-width: 6px; transition: height .4s ease; }
 .trend-label { font-size: 11px; color: var(--text3); text-align: center; white-space: nowrap; }
 
