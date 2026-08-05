@@ -28,32 +28,58 @@
 
     <!-- ══════════════ LIST TAB ══════════════ -->
     <div v-if="activeTab === 'list'">
-      <div class="stats-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px;">
-        <div class="stat-card"><div class="stat-card-accent"></div><div class="stat-label">ผู้ตอบทั้งหมด</div><div class="stat-value">{{ responses.length }}</div></div>
-        <div class="stat-card">
-          <div class="stat-card-accent gold"></div>
-          <div class="stat-label">ค่าเฉลี่ย (x̄)</div>
-          <div style="display:flex;align-items:baseline;gap:4px;margin:4px 0 2px;">
-            <div class="stat-value" style="font-size:24px;">{{ avgScore }}</div>
-            <div v-if="avgScore !== '—'" style="font-size:12px;color:var(--text3);">/ 5.0</div>
+      <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);">
+        <div class="kpi-card" style="--kpi-accent:var(--royal);--kpi-accent-bg:rgba(26,86,160,.1);">
+          <div class="kpi-icon-box">👥</div>
+          <div><div class="kpi-num">{{ responses.length }}</div><div class="kpi-lbl">ผู้ตอบทั้งหมด</div></div>
+        </div>
+        <div class="kpi-card" :style="{ '--kpi-accent': avgScoreAllHex, '--kpi-accent-bg': avgScoreAllHex + '1a' }">
+          <div class="kpi-icon-box">⭐</div>
+          <div>
+            <div class="kpi-num" :style="{ color: avgScoreAllHex }">{{ avgScoreAll }}<span v-if="avgScoreAll !== '—'" class="kpi-num-sub"> /5.0</span></div>
+            <div class="kpi-lbl">ค่าเฉลี่ย (x̄)</div>
           </div>
         </div>
-        <div class="stat-card"><div class="stat-card-accent"></div><div class="stat-label">เป้าหมาย</div><div class="stat-value">{{ survey?.target_responses || '—' }}</div></div>
-        <div class="stat-card"><div class="stat-card-accent"></div><div class="stat-label">ตอบล่าสุด</div><div class="stat-value" style="font-size:16px;">{{ lastDate }}</div></div>
+        <div class="kpi-card" style="--kpi-accent:var(--gold);--kpi-accent-bg:rgba(201,168,76,.14);">
+          <div class="kpi-icon-box">🎯</div>
+          <div><div class="kpi-num">{{ survey?.target_responses || '—' }}</div><div class="kpi-lbl">เป้าหมาย</div></div>
+        </div>
+        <div class="kpi-card" style="--kpi-accent:#8b5cf6;--kpi-accent-bg:rgba(139,92,246,.12);">
+          <div class="kpi-icon-box">🕒</div>
+          <div><div class="kpi-num" style="font-size:16px;">{{ lastDate }}</div><div class="kpi-lbl">ตอบล่าสุด</div></div>
+        </div>
       </div>
 
-      <div class="chart-card">
+      <div class="filter-bar">
+        <div class="search-wrap" style="min-width:220px;flex:0 0 260px;">
+          <span class="search-icon">🔍</span>
+          <input v-model="listSearch" class="search-input" placeholder="ค้นหาชื่อผู้ตอบ..." />
+        </div>
+        <select v-model="listScoreFilter" class="filter-select pill-select">
+          <option value="">คะแนน: ทั้งหมด</option>
+          <option value="high">4-5 ดาว</option>
+          <option value="low">1-3 ดาว</option>
+        </select>
+        <span class="filter-result-count" v-if="listSearch || listScoreFilter">พบ {{ listFilteredResponses.length }} จาก {{ responses.length }} รายการ</span>
+      </div>
+
+      <div class="chart-card" style="padding:0;overflow:hidden;">
         <table class="response-table">
           <thead>
-            <tr><th>#</th><th>ชื่อ-นามสกุล</th><th>คะแนน</th><th>ข้อเสนอแนะ</th><th>วันที่</th></tr>
+            <tr><th>#</th><th>ผู้ตอบ</th><th>คะแนน</th><th>ข้อเสนอแนะ</th><th>วันที่</th></tr>
           </thead>
           <tbody>
-            <tr v-if="responses.length === 0">
-              <td colspan="5" style="text-align:center;padding:32px;color:var(--text3);">ยังไม่มีคำตอบ</td>
+            <tr v-if="listFilteredResponses.length === 0">
+              <td colspan="5" style="text-align:center;padding:32px;color:var(--text3);">{{ responses.length === 0 ? 'ยังไม่มีคำตอบ' : 'ไม่พบรายการที่ตรงกับตัวกรอง' }}</td>
             </tr>
-            <tr v-for="(r, i) in responses" :key="r.id">
+            <tr v-for="(r, i) in listFilteredResponses" :key="r.id">
               <td>{{ i + 1 }}</td>
-              <td><b>{{ r.respondent_name }}</b></td>
+              <td>
+                <div class="name-cell">
+                  <span class="avatar-badge" :style="{ background: avatarColor(i) + '1a', color: avatarColor(i) }">{{ initials(r.respondent_name) }}</span>
+                  <b>{{ r.respondent_name }}</b>
+                </div>
+              </td>
               <td>
                 <div class="rating-stars">
                   <span v-for="n in 5" :key="n" class="star" :class="{ empty: n > Math.round(parseFloat(r.overall_score) || 0) }">★</span>
@@ -72,52 +98,44 @@
 
       <!-- ── Filter bar ── -->
       <div class="filter-bar">
-        <div class="filter-group">
-          <label class="filter-label">จากวันที่</label>
-          <input type="date" v-model="filterFrom" class="filter-input" />
+        <div class="date-range-box">
+          <span>📅</span>
+          <input type="date" v-model="filterFrom" />
+          <span class="date-arrow">→</span>
+          <input type="date" v-model="filterTo" />
         </div>
-        <div class="filter-group">
-          <label class="filter-label">ถึงวันที่</label>
-          <input type="date" v-model="filterTo" class="filter-input" />
-        </div>
-        <div class="filter-group" v-if="categoricalCharts.length > 1">
-          <label class="filter-label">คำถามที่กรอง</label>
-          <select v-model.number="filterQuestionId" class="filter-select" style="min-width:140px;">
-            <option v-for="c in categoricalCharts" :key="c.question_id" :value="c.question_id">{{ c.question_text }}</option>
-          </select>
-        </div>
-        <div class="filter-group" v-if="genderOptions.length">
-          <label class="filter-label">{{ selectedCategoricalQuestionText }}</label>
-          <select v-model="filterGender" class="filter-select" style="min-width:120px;">
-            <option value="">ทั้งหมด</option>
-            <option v-for="opt in genderOptions" :key="opt" :value="opt">{{ opt }}</option>
-          </select>
-        </div>
+        <select v-model.number="filterQuestionId" class="filter-select pill-select" v-if="categoricalCharts.length > 1" style="min-width:140px;">
+          <option v-for="c in categoricalCharts" :key="c.question_id" :value="c.question_id">{{ c.question_text }}</option>
+        </select>
+        <select v-model="filterGender" class="filter-select pill-select" v-if="genderOptions.length" style="min-width:120px;">
+          <option value="">{{ selectedCategoricalQuestionText }}: ทั้งหมด</option>
+          <option v-for="opt in genderOptions" :key="opt" :value="opt">{{ opt }}</option>
+        </select>
+        <button v-if="filterFrom || filterTo || filterGender" class="filter-reset-btn" @click="resetDashFilters">↺ ล้างตัวกรอง</button>
         <div style="flex:1;"></div>
         <button v-if="!isShared" @click="openImportCsv" class="export-btn">📤 นำเข้าคำตอบ CSV</button>
         <button @click="exportCSV" class="export-btn">📥 Export CSV</button>
       </div>
 
       <!-- ── KPI Row ── -->
-      <div class="kpi-row">
-        <div class="kpi-mini-card">
-          <div class="kpi-mini-icon">👥</div>
-          <div>
-            <div class="kpi-mini-val">{{ filteredResponses.length }}</div>
-            <div class="kpi-mini-label">ผู้ตอบทั้งหมด</div>
-          </div>
+      <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
+        <div class="kpi-card" style="--kpi-accent:var(--royal);--kpi-accent-bg:rgba(26,86,160,.1);">
+          <div class="kpi-icon-box">👥</div>
+          <div><div class="kpi-num">{{ filteredResponses.length }}</div><div class="kpi-lbl">ผู้ตอบทั้งหมด</div></div>
         </div>
-        <div class="kpi-mini-card">
-          <div class="kpi-mini-icon">⭐</div>
+        <div class="kpi-card" :style="{ '--kpi-accent': avgScoreHex, '--kpi-accent-bg': avgScoreHex + '1a' }">
+          <div class="kpi-icon-box">⭐</div>
           <div>
-            <div class="kpi-mini-val" :class="scoreColorClass">
-              {{ avgScore }}<span v-if="avgScore !== '—'" class="kpi-mini-denom"> / 5.00</span>
-            </div>
-            <div class="kpi-mini-label" style="display:flex;align-items:center;gap:6px;">
-              ค่าเฉลี่ย
+            <div class="kpi-num" :style="{ color: avgScoreHex }">{{ avgScore }}<span v-if="avgScore !== '—'" class="kpi-num-sub"> /5.00</span></div>
+            <div class="kpi-lbl">
+              ค่าเฉลี่ยความพึงพอใจ
               <span v-if="avgScore !== '—'" class="interp-badge" :class="interpClass(parseFloat(avgScore))">{{ interpText(parseFloat(avgScore)) }}</span>
             </div>
           </div>
+        </div>
+        <div class="kpi-card" style="--kpi-accent:var(--gold);--kpi-accent-bg:rgba(201,168,76,.14);">
+          <div class="kpi-icon-box">💬</div>
+          <div><div class="kpi-num">{{ comments.length }}</div><div class="kpi-lbl">มีข้อเสนอแนะ</div></div>
         </div>
       </div>
 
@@ -278,13 +296,14 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, inject } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, inject } from 'vue';
 import { useRoute } from 'vue-router';
 import { useSurveyStore } from '@/stores/surveys';
 import { useAuthStore }   from '@/stores/auth';
 import api from '@/api';
 import { badgeClass, badgeText, interpClass, interpText } from '@/composables/useSurveyStatus';
 import { openGoogleAuthPopup } from '@/composables/useGoogleOAuthPopup';
+import { localDateStr } from '@/composables/useLocalDate';
 import ImportResponsesCsvModal from '@/components/Survey/ImportResponsesCsvModal.vue';
 
 const route = useRoute();
@@ -301,6 +320,37 @@ const importCsvRef = ref(null);
 const filterFrom = ref('');
 const filterTo = ref('');
 const filterGender = ref('');
+
+function resetDashFilters() {
+  filterFrom.value = '';
+  filterTo.value = '';
+  filterGender.value = '';
+}
+
+// List-tab-only search/score filter — separate from the Dashboard tab's
+// date/gender filters above so switching tabs never resets either one.
+const listSearch = ref('');
+const listScoreFilter = ref('');
+const listFilteredResponses = computed(() =>
+  responses.value.filter(r => {
+    if (listSearch.value.trim() && !(r.respondent_name || '').toLowerCase().includes(listSearch.value.trim().toLowerCase())) return false;
+    if (listScoreFilter.value) {
+      const s = Math.round(parseFloat(r.overall_score) || 0);
+      if (listScoreFilter.value === 'high' && s < 4) return false;
+      if (listScoreFilter.value === 'low' && (s < 1 || s > 3)) return false;
+    }
+    return true;
+  })
+);
+
+const avatarPalette = ['#1A56A0', '#C9A84C', '#22c55e', '#f97316', '#8b5cf6', '#ef4444'];
+function avatarColor(i) { return avatarPalette[i % avatarPalette.length]; }
+function initials(name) {
+  const s = (name || '').trim();
+  if (!s) return '?';
+  const parts = s.split(/\s+/);
+  return parts.length > 1 ? (parts[0][0] + parts[1][0]).toUpperCase() : s.slice(0, 2).toUpperCase();
+}
 
 const donutColors = ['#1a56a0', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#f97316'];
 
@@ -366,11 +416,13 @@ const genderOptions = computed(() => {
 
 const filteredResponses = computed(() =>
   responses.value.filter(r => {
-    // .slice(0, 10) on both ends — submitted_at is a full ISO timestamp;
-    // comparing it against a plain YYYY-MM-DD date input value needs both
-    // sides truncated to the date portion the same way, or the "from" side
-    // silently compares a full timestamp against a bare date.
-    const day = (r.submitted_at || '').slice(0, 10);
+    // localDateStr (not .slice(0, 10)) — submitted_at is a UTC ISO
+    // timestamp; slicing took its UTC calendar date, which can be one day
+    // off from the viewer's local date (e.g. a response submitted late at
+    // night in Thailand, UTC+7) compared against the local date the
+    // <input type="date"> filter actually represents. Same bug already
+    // fixed once in DashboardView.vue's trend chart — see useLocalDate.js.
+    const day = r.submitted_at ? localDateStr(r.submitted_at) : '';
     if (filterFrom.value && day < filterFrom.value) return false;
     if (filterTo.value   && day > filterTo.value) return false;
     if (filterGender.value && filterQuestionId.value != null) {
@@ -433,6 +485,29 @@ const scoreColorClass = computed(() => {
   return 'score-bad';
 });
 
+// Hex equivalents of the score-* classes above, for inline-styled KPI card
+// accents (CSS custom properties can't reference a scoped class's color).
+function scoreHexColor(s) {
+  if (isNaN(s)) return '#6B7FA3';
+  if (s >= 4.5) return '#22c55e';
+  if (s >= 3.5) return '#3b82f6';
+  if (s >= 2.5) return '#f59e0b';
+  if (s >= 1.5) return '#f97316';
+  return '#ef4444';
+}
+const avgScoreHex = computed(() => scoreHexColor(parseFloat(avgScore.value)));
+
+// Dashboard-filter-independent average — the List tab's KPI cards show the
+// survey's overall stats regardless of whatever date/gender filter is set
+// on the Dashboard tab, since the two tabs' filters are intentionally
+// separate (see listFilteredResponses above).
+const avgScoreAll = computed(() => {
+  const v = responses.value.map(r => parseFloat(r.overall_score)).filter(s => !isNaN(s));
+  if (!v.length) return '—';
+  return (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1);
+});
+const avgScoreAllHex = computed(() => scoreHexColor(parseFloat(avgScoreAll.value)));
+
 const comments = computed(() => filteredResponses.value.filter(r => r.note));
 const lastDate = computed(() => responses.value.length ? formatDate(responses.value[0].submitted_at) : '—');
 
@@ -473,11 +548,20 @@ function formatDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+// seq guard — this component isn't currently reused across two different
+// /surveys/:id/responses navigations (every "ดูผล" link that routes here
+// does so from a different route, forcing a fresh mount), but if that ever
+// changes, two loadResponses() calls could end up in flight at once; without
+// this, whichever resolved last would win even if it was for the older id.
+let loadSeq = 0;
 async function loadResponses() {
+  const seq = ++loadSeq;
+  const targetId = route.params.id;
   const [r1, r2] = await Promise.all([
-    api.get(`/surveys/${route.params.id}/responses`),
-    api.get(`/surveys/${route.params.id}/responses/chart-data`),
+    api.get(`/surveys/${targetId}/responses`),
+    api.get(`/surveys/${targetId}/responses/chart-data`),
   ]);
+  if (seq !== loadSeq) return; // a newer load started while this was in flight
   charts.value = r2.data;
   responses.value = r1.data.map(r => {
     let answers = r.answers;
@@ -487,6 +571,14 @@ async function loadResponses() {
     return { ...r, answers, note: paraAns?.answer_text || null };
   });
 }
+
+// Re-fetch if this component instance is ever reused for a different
+// survey's responses (e.g. a future "next/prev survey" link) instead of
+// silently continuing to show the previous survey's data.
+watch(() => route.params.id, (id, oldId) => {
+  if (!id || id === oldId) return;
+  loadResponses();
+});
 
 // Tracks the in-flight popup/poller so cancelSync() can stop it — see
 // useGoogleOAuthPopup.js for why we poll our backend instead of using
@@ -548,6 +640,17 @@ onMounted(async () => {
   await surveyStore.fetchAll();
   await loadResponses();
 });
+
+// Without this, navigating away from this page mid-authorization (unlike
+// SurveyBuilder.vue/ImportSurveyModal.vue, this flow has no explicit close
+// button to catch it on) left the popup/poller running — a resolve after
+// the user already left would still POST /google/sync-responses and call
+// loadResponses()/surveyStore.fetchAll()/showToast against a page that's no
+// longer showing, for a survey the user may not even still be looking at.
+onBeforeUnmount(() => {
+  activeAuthPopup?.cancel();
+  activeAuthPopup = null;
+});
 </script>
 
 <style scoped>
@@ -562,21 +665,39 @@ onMounted(async () => {
   border-radius: var(--r);
   padding: 12px 16px;
   margin-bottom: 14px;
-  box-shadow: var(--sh);
+  box-shadow: var(--sh1);
 }
-.filter-group { display: flex; flex-direction: column; gap: 3px; }
-.filter-label { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .4px; }
-.filter-input { border: 1px solid var(--line); border-radius: var(--r2); padding: 5px 8px; font-size: 12px; font-family: 'Sarabun', sans-serif; color: var(--text); background: var(--slate); }
 .export-btn { background: var(--navy); color: #fff; border: none; border-radius: var(--r2); padding: 7px 14px; font-size: 12px; font-family: 'Sarabun', sans-serif; font-weight: 700; cursor: pointer; transition: opacity .15s; }
 .export-btn:hover { opacity: .85; }
 
-/* ── KPI Row ── */
-.kpi-row { display: grid; grid-template-columns: 1fr 2fr; gap: 12px; margin-bottom: 14px; }
-.kpi-mini-card { display: flex; align-items: center; gap: 14px; background: var(--white); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 20px; box-shadow: var(--sh); }
-.kpi-mini-icon  { font-size: 28px; flex-shrink: 0; }
-.kpi-mini-val   { font-size: 32px; font-weight: 800; color: var(--navy); line-height: 1.1; }
-.kpi-mini-denom { font-size: 14px; font-weight: 400; color: var(--text3); }
-.kpi-mini-label { font-size: 12px; color: var(--text3); margin-top: 2px; }
+/* ── Date range group + reset (filter bar) ── */
+.date-range-box { display: flex; align-items: center; gap: 6px; background: var(--slate); border-radius: 6px; padding: 6px 10px; font-size: 11px; color: var(--text3); }
+.date-range-box input[type=date] { border: none; background: none; font-family: 'Sarabun', sans-serif; font-size: 12px; color: var(--text); outline: none; }
+.date-arrow { font-size: 11px; color: var(--text3); }
+.pill-select { border-radius: 99px !important; }
+.filter-reset-btn { background: none; border: 1px solid var(--line); color: var(--text3); border-radius: 99px; padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer; font-family: 'Sarabun', sans-serif; transition: all .15s; }
+.filter-reset-btn:hover { border-color: var(--royal); color: var(--royal); }
+
+/* ── KPI Card (shared: List tab + Dashboard tab) ── */
+.kpi-grid { display: grid; gap: 12px; margin-bottom: 16px; }
+.kpi-card {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--white); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 14px 16px; box-shadow: var(--sh1); position: relative; overflow: hidden;
+}
+.kpi-card::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: var(--kpi-accent, var(--royal)); }
+.kpi-icon-box {
+  width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 16px;
+  background: var(--kpi-accent-bg, rgba(26,86,160,.1));
+}
+.kpi-num { font-size: 26px; font-weight: 800; color: var(--navy); line-height: 1.1; }
+.kpi-num-sub { font-size: 12px; font-weight: 400; color: var(--text3); }
+.kpi-lbl { font-size: 11px; color: var(--text3); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+
+/* ── Avatar / name cell (List tab table) ── */
+.name-cell { display: flex; align-items: center; gap: 8px; }
+.avatar-badge { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; flex-shrink: 0; }
 
 /* Score dynamic colors */
 .score-excellent { color: #22c55e !important; }
