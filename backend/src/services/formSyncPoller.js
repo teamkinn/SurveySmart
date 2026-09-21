@@ -2,6 +2,7 @@ const { google } = require('googleapis');
 const db = require('../config/db');
 const { getClient } = require('./googleAuth');
 const { pullFormResponses } = require('./googleFormsSync');
+const { decrypt } = require('../utils/credentialCrypto');
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
 let running = false;
@@ -17,7 +18,7 @@ async function pollOnce() {
     for (const survey of surveys) {
       try {
         const client = getClient();
-        client.setCredentials({ refresh_token: survey.google_refresh_token });
+        client.setCredentials({ refresh_token: decrypt(survey.google_refresh_token) });
         const forms = google.forms({ version: 'v1', auth: client });
 
         const { synced, skipped } = await pullFormResponses(forms, survey.google_form_id, survey.id);

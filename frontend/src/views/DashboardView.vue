@@ -234,6 +234,7 @@ import { ref, computed, watch, onMounted, inject } from 'vue';
 import { useSurveyStore } from '@/stores/surveys';
 import api from '@/api';
 import { formatDate, badgeClass, badgeText, interpClass, interpText } from '@/composables/useSurveyStatus';
+import { localDateStr } from '@/composables/useLocalDate';
 
 const showToast = inject('showToast');
 const surveyStore = useSurveyStore();
@@ -275,7 +276,11 @@ const avgScore = computed(() => {
 const filteredCharts = computed(() => {
   const q = questionSearch.value.trim().toLowerCase();
   if (!q) return charts.value;
-  return charts.value.filter(c => c.question_text.toLowerCase().includes(q));
+  // (c.question_text || '') — an orphaned/malformed question (e.g. one left
+  // behind by a bad CSV import) with a null/undefined question_text would
+  // otherwise throw here and take down the whole "รายคำถาม" tab instead of
+  // just not matching the search.
+  return charts.value.filter(c => (c.question_text || '').toLowerCase().includes(q));
 });
 
 const recentResponses = computed(() =>
@@ -316,19 +321,6 @@ const growth = computed(() => {
   if (pct < 0) return { text: `▼ ${Math.abs(pct)}%`, cls: 'growth-down' };
   return { text: '— 0%', cls: '' };
 });
-
-// Local (not UTC) calendar-day key. The trend bars and their weekday/date
-// labels must bucket by the same day boundary — using toISOString() (UTC)
-// for the bucket key while toLocaleDateString() (local) rendered the label
-// meant a response submitted late at night in Thailand (UTC+7, which is
-// already "tomorrow" in UTC after ~17:00 local) could land in a bar labeled
-// with the wrong date, or get silently dropped from the "today" bucket.
-function localDateStr(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 
 // trendRangeDays: 7 or 30 = that many trailing days; 0 = "ทั้งหมด", from the
 // earliest response on record (capped at 60 days so the chart stays

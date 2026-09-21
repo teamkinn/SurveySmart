@@ -243,6 +243,39 @@ test('importCsv — rows without any id column never dedup against each other', 
   assert.equal(res.body.duplicates, 0);
 });
 
+test('importCsv — a row imported without an id column still gets external_id self-assigned to its own new id (regression test, so a later export/re-import can dedup it)', async () => {
+  const restoreQuery = stubQuestionsQuery();
+  const originalGetConnection = db.getConnection;
+  const queries = [];
+  let nextResponseId = 700;
+  db.getConnection = async () => ({
+    beginTransaction: async () => {},
+    query: async (sql, params) => {
+      queries.push({ sql, params });
+      if (sql.startsWith('INSERT INTO responses')) {
+        return [{ insertId: nextResponseId++ }];
+      }
+      return [{}];
+    },
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+  });
+
+  const headers = ['ชื่อ-นามสกุล', 'ความพึงพอใจโดยรวม', 'คะแนนบริการ']; // no id/response_id/external_id column
+  const rows = [['สมชาย', 'ดีมาก (5)', '4']];
+  const req = { params: { surveyId: '7' }, user: { id: 1, role: 'user' }, body: { headers, rows } };
+  const res = mockRes();
+  await ctrl.importCsv(req, res);
+  restoreQuery();
+  db.getConnection = originalGetConnection;
+
+  assert.equal(res.body.imported, 1);
+  const updateQuery = queries.find(q => q.sql.startsWith('UPDATE responses SET external_id'));
+  assert.ok(updateQuery, 'expected external_id to be self-assigned after an id-less insert');
+  assert.deepEqual(updateQuery.params, ['700', 700]);
+});
+
 test('importCsv — rejects when no CSV column matches any question', async () => {
   const restoreQuery = stubQuestionsQuery();
   // Force zero matches: give a name column (excluded from matching) and no

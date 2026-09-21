@@ -79,6 +79,46 @@ test('auth middleware — a stale token whose role was demoted server-side gets 
   assert.equal(req.user.role, 'user');
 });
 
+test('auth middleware — rejects a token issued before the account\'s last password reset, even though the token itself is still valid and unexpired (revocation regression test)', async () => {
+  const token = jwt.sign({ id: 1, username: 'tester', role: 'user' }, process.env.JWT_SECRET);
+  const req = { headers: { authorization: `Bearer ${token}` } };
+  const res = mockRes();
+  let nextCalled = false;
+
+  const originalQuery = db.query;
+  // Password was reset one second in the future relative to the token's
+  // iat — simulates "reset happened right after this token was issued".
+  const changedAt = new Date((jwt.decode(token).iat + 1) * 1000);
+  db.query = async () => [[{
+    id: 1, username: 'tester', email: 't@example.com', role: 'user', is_active: 1,
+    password_changed_at: changedAt,
+  }]];
+  await auth(req, res, () => { nextCalled = true; });
+  db.query = originalQuery;
+
+  assert.equal(nextCalled, false);
+  assert.equal(res.statusCode, 401);
+});
+
+test('auth middleware — accepts a token issued after the account\'s last password reset', async () => {
+  const token = jwt.sign({ id: 1, username: 'tester', role: 'user' }, process.env.JWT_SECRET);
+  const req = { headers: { authorization: `Bearer ${token}` } };
+  const res = mockRes();
+  let nextCalled = false;
+
+  const originalQuery = db.query;
+  // Password was changed well before this token was issued.
+  const changedAt = new Date((jwt.decode(token).iat - 3600) * 1000);
+  db.query = async () => [[{
+    id: 1, username: 'tester', email: 't@example.com', role: 'user', is_active: 1,
+    password_changed_at: changedAt,
+  }]];
+  await auth(req, res, () => { nextCalled = true; });
+  db.query = originalQuery;
+
+  assert.equal(nextCalled, true);
+});
+
 test('auth middleware — rejects a token for a user that no longer exists (deleted account)', async () => {
   const token = jwt.sign({ id: 999, username: 'ghost', role: 'user' }, process.env.JWT_SECRET);
   const req = { headers: { authorization: `Bearer ${token}` } };

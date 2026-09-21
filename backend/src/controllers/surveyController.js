@@ -3,6 +3,26 @@ const { randomBytes } = require('crypto');
 
 const genToken = () => randomBytes(32).toString('hex');
 
+// Only the global request body-size limit bounded `questions`/`options_json`
+// before this — cheap for an authenticated user to send an absurdly large
+// payload (thousands of questions, or one megabyte-scale options_json blob)
+// that's individually still under the body limit. Returns an error message
+// string if the payload is too large, or null if it's fine.
+const MAX_QUESTIONS_PER_SURVEY = 300;
+const MAX_OPTIONS_JSON_LENGTH = 20000;
+function validateQuestionsPayload(questions) {
+  if (!Array.isArray(questions)) return null;
+  if (questions.length > MAX_QUESTIONS_PER_SURVEY) {
+    return `แบบสอบถามมีคำถามได้สูงสุด ${MAX_QUESTIONS_PER_SURVEY} ข้อ`;
+  }
+  for (const q of questions) {
+    if (q?.options && JSON.stringify(q.options).length > MAX_OPTIONS_JSON_LENGTH) {
+      return 'ตัวเลือกของคำถามข้อหนึ่งมีขนาดใหญ่เกินไป';
+    }
+  }
+  return null;
+}
+
 // Single source of truth for the "survey summary" shape (stats + Google
 // Forms sync fields) so list/create/update never drift into returning
 // different shapes for the same survey.
@@ -35,12 +55,23 @@ const SURVEY_COLUMNS = `
 exports.get = async (req, res) => {
   try {
     const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
-    const [surveys] = await db.query(
-      isAdmin
-        ? `SELECT ${SURVEY_COLUMNS} FROM surveys WHERE id = ?`
-        : `SELECT ${SURVEY_COLUMNS} FROM surveys WHERE id = ? AND user_id = ?`,
-      isAdmin ? [req.params.id] : [req.params.id, req.user.id]
-    );
+    if (!isAdmin) {
+      // Must match responseController.canAccessSurvey's rule (owner, an
+      // explicit survey_shares row, or shared_all) — that's what already
+      // gates this same survey's responses/chart-data and what listShared
+      // exists to surface. Checking ownership only here meant a user who
+      // could already see this survey's responses via the tabs above got a
+      // 404 on the survey's own detail endpoint.
+      const [[access]] = await db.query(
+        `SELECT s.id FROM surveys s
+         LEFT JOIN survey_shares sh ON sh.survey_id = s.id AND sh.shared_with_id = ?
+         WHERE s.id = ? AND (s.user_id = ? OR sh.id IS NOT NULL OR s.shared_all = 1)`,
+        [req.user.id, req.params.id, req.user.id]
+      );
+      if (!access) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
+    }
+
+    const [surveys] = await db.query(`SELECT ${SURVEY_COLUMNS} FROM surveys WHERE id = ?`, [req.params.id]);
     if (!surveys.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
     const [questions] = await db.query(
@@ -58,6 +89,8 @@ exports.create = async (req, res) => {
   try {
     const { title, description, close_date, questions, google_form_url, google_form_id } = req.body;
     if (!title) return res.status(400).json({ message: 'กรุณาระบุชื่อแบบสอบถาม' });
+    const questionsError = validateQuestionsPayload(questions);
+    if (questionsError) return res.status(400).json({ message: questionsError });
 
     const token = genToken();
     const [result] = await db.query(
@@ -106,6 +139,9 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { title, description, status, close_date, target_responses, questions } = req.body;
+    const questionsError = validateQuestionsPayload(questions);
+    if (questionsError) return res.status(400).json({ message: questionsError });
+
     // Only head_admin may edit surveys they don't own — a regular admin can
     // still edit their own (falls through to the ownership-scoped query).
     const isHeadAdmin = req.user.role === 'head_admin';
@@ -312,12 +348,16 @@ exports.share = async (req, res) => {
     );
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
 
+    // is_active = 1 — mirrors userController.search, which already excludes
+    // suspended accounts from the picker. Without it here too, a suspended
+    // user could still be added to survey_shares by id/email even though
+    // they can no longer log in to see anything shared with them.
     let target;
     if (user_id) {
-      const [rows] = await db.query('SELECT id FROM users WHERE id = ?', [user_id]);
+      const [rows] = await db.query('SELECT id FROM users WHERE id = ? AND is_active = 1', [user_id]);
       target = rows[0];
     } else if (email) {
-      const [rows] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+      const [rows] = await db.query('SELECT id FROM users WHERE email = ? AND is_active = 1', [email]);
       target = rows[0];
     }
     if (!target) return res.status(404).json({ message: 'ไม่พบผู้ใช้งาน' });

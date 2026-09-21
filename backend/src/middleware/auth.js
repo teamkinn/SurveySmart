@@ -23,12 +23,25 @@ module.exports = async (req, res, next) => {
   // system for up to a week after the admin action.
   try {
     const [[user]] = await db.query(
-      'SELECT id, username, email, role, is_active FROM users WHERE id = ?',
+      'SELECT id, username, email, role, is_active, password_changed_at FROM users WHERE id = ?',
       [payload.id]
     );
     if (!user || !user.is_active) {
       return res.status(401).json({ message: 'บัญชีนี้ถูกระงับการใช้งานหรือถูกลบแล้ว' });
     }
+
+    // Reject tokens issued before the password was last changed. jwt.sign
+    // stamps every token with `iat` (issued-at, epoch seconds) by default,
+    // so a leaked/stale token stops working the moment the user resets
+    // their password instead of staying valid until it naturally expires
+    // (up to JWT_EXPIRES_IN, default 7 days).
+    if (user.password_changed_at) {
+      const changedAtSec = Math.floor(new Date(user.password_changed_at).getTime() / 1000);
+      if (payload.iat < changedAtSec) {
+        return res.status(401).json({ message: 'รหัสผ่านถูกเปลี่ยนแล้ว กรุณาเข้าสู่ระบบใหม่' });
+      }
+    }
+
     req.user = { id: user.id, username: user.username, email: user.email, role: user.role };
     next();
   } catch (err) {

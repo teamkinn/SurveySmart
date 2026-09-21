@@ -74,6 +74,7 @@ test('submit — rejects a submission missing an answer to a required question',
     beginTransaction: async () => {},
     query: async (sql) => {
       if (sql.includes('FROM surveys') && sql.includes("status = 'active'")) return [[{ id: 1 }]];
+      if (sql.includes('question_type')) return [[{ id: 10, question_type: 'short', options_json: null }]];
       if (sql.includes('is_required = 1')) return [[{ id: 10 }]];
       return [{ insertId: 1 }];
     },
@@ -84,7 +85,7 @@ test('submit — rejects a submission missing an answer to a required question',
 
   const req = {
     params: { surveyId: '1' },
-    body: { respondent_name: 'Tester', answers: [] },
+    body: { respondent_name: 'Tester', answers: [], share_token: 'tok-1' },
     ip: '127.0.0.1',
   };
   const res = mockRes();
@@ -100,6 +101,7 @@ test('submit — accepts a valid submission with all required answers present', 
     beginTransaction: async () => {},
     query: async (sql) => {
       if (sql.includes('FROM surveys') && sql.includes("status = 'active'")) return [[{ id: 1 }]];
+      if (sql.includes('question_type')) return [[{ id: 10, question_type: 'short', options_json: null }]];
       if (sql.includes('is_required = 1')) return [[{ id: 10 }]];
       return [{ insertId: 99 }];
     },
@@ -110,7 +112,7 @@ test('submit — accepts a valid submission with all required answers present', 
 
   const req = {
     params: { surveyId: '1' },
-    body: { respondent_name: 'Tester', answers: [{ question_id: 10, answer_text: 'yes' }] },
+    body: { respondent_name: 'Tester', answers: [{ question_id: 10, answer_text: 'yes' }], share_token: 'tok-1' },
     ip: '127.0.0.1',
   };
   const res = mockRes();
@@ -120,6 +122,39 @@ test('submit — accepts a valid submission with all required answers present', 
   assert.equal(res.statusCode, 201);
 });
 
+test('submit — self-assigns external_id = its own id, so Export CSV -> re-import into the same survey can dedup on the first try (regression test)', async () => {
+  const originalGetConnection = db.getConnection;
+  const queries = [];
+  db.getConnection = async () => ({
+    beginTransaction: async () => {},
+    query: async (sql, params) => {
+      queries.push({ sql, params });
+      if (sql.includes('FROM surveys') && sql.includes("status = 'active'")) return [[{ id: 1 }]];
+      if (sql.includes('question_type')) return [[{ id: 10, question_type: 'short', options_json: null }]];
+      if (sql.includes('is_required = 1')) return [[]];
+      if (sql.startsWith('INSERT INTO responses')) return [{ insertId: 555 }];
+      return [{}];
+    },
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+  });
+
+  const req = {
+    params: { surveyId: '1' },
+    body: { respondent_name: 'Tester', answers: [{ question_id: 10, answer_text: 'yes' }], share_token: 'tok-1' },
+    ip: '127.0.0.1',
+  };
+  const res = mockRes();
+  await ctrl.submit(req, res);
+  db.getConnection = originalGetConnection;
+
+  assert.equal(res.statusCode, 201);
+  const updateQuery = queries.find(q => q.sql.startsWith('UPDATE responses SET external_id'));
+  assert.ok(updateQuery, 'expected an UPDATE responses SET external_id ... query after the insert');
+  assert.deepEqual(updateQuery.params, ['555', 555]);
+});
+
 test('submit — a genuine answer of 0 (e.g. a scale question with min: 0) is stored as 0, not NULL (regression test)', async () => {
   const originalGetConnection = db.getConnection;
   let insertedAnswerValues = null;
@@ -127,6 +162,9 @@ test('submit — a genuine answer of 0 (e.g. a scale question with min: 0) is st
     beginTransaction: async () => {},
     query: async (sql, params) => {
       if (sql.includes('FROM surveys') && sql.includes("status = 'active'")) return [[{ id: 1 }]];
+      if (sql.includes('question_type')) {
+        return [[{ id: 10, question_type: 'scale', options_json: JSON.stringify({ min: 0, max: 5 }) }]];
+      }
       if (sql.includes('is_required = 1')) return [[]];
       if (sql.includes('INSERT INTO response_answers')) {
         insertedAnswerValues = params[0];
@@ -141,7 +179,7 @@ test('submit — a genuine answer of 0 (e.g. a scale question with min: 0) is st
 
   const req = {
     params: { surveyId: '1' },
-    body: { respondent_name: 'Tester', answers: [{ question_id: 10, score: 0 }] },
+    body: { respondent_name: 'Tester', answers: [{ question_id: 10, score: 0 }], share_token: 'tok-1' },
     ip: '127.0.0.1',
   };
   const res = mockRes();
@@ -166,10 +204,114 @@ test('submit — rejects submissions to a survey that is not active (closed/draf
     release: () => {},
   });
 
-  const req = { params: { surveyId: '1' }, body: { respondent_name: 'Tester', answers: [] }, ip: '127.0.0.1' };
+  const req = { params: { surveyId: '1' }, body: { respondent_name: 'Tester', answers: [], share_token: 'tok-1' }, ip: '127.0.0.1' };
   const res = mockRes();
   await ctrl.submit(req, res);
   db.getConnection = originalGetConnection;
 
   assert.equal(res.statusCode, 403);
+});
+
+test('submit — requires a matching share_token, not just an active survey id (regression test for the ID-enumeration fix)', async () => {
+  const originalGetConnection = db.getConnection;
+  let capturedParams = null;
+  db.getConnection = async () => ({
+    beginTransaction: async () => {},
+    query: async (sql, params) => {
+      if (sql.includes('FROM surveys') && sql.includes("status = 'active'")) {
+        capturedParams = params;
+        // Simulate the real query: only matches when share_token is correct.
+        return params[1] === 'correct-token' ? [[{ id: 1 }]] : [[]];
+      }
+      if (sql.includes('question_type')) return [[]];
+      if (sql.includes('is_required = 1')) return [[]];
+      return [{ insertId: 1 }];
+    },
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+  });
+
+  const req = {
+    params: { surveyId: '1' },
+    body: { respondent_name: 'Tester', answers: [], share_token: 'guessed-wrong-token' },
+    ip: '127.0.0.1',
+  };
+  const res = mockRes();
+  await ctrl.submit(req, res);
+  db.getConnection = originalGetConnection;
+
+  assert.equal(res.statusCode, 403);
+  assert.ok(capturedParams.includes('guessed-wrong-token'), 'share_token from the request body must reach the query');
+});
+
+test('submit — drops an answer whose question_id does not belong to this survey (regression test for cross-survey answer injection)', async () => {
+  const originalGetConnection = db.getConnection;
+  let insertedAnswerValues = 'not-called';
+  db.getConnection = async () => ({
+    beginTransaction: async () => {},
+    query: async (sql, params) => {
+      if (sql.includes('FROM surveys') && sql.includes("status = 'active'")) return [[{ id: 1 }]];
+      // This survey only really has question id 10 — 999 belongs to some other survey.
+      if (sql.includes('question_type')) return [[{ id: 10, question_type: 'short', options_json: null }]];
+      if (sql.includes('is_required = 1')) return [[]];
+      if (sql.includes('INSERT INTO response_answers')) {
+        insertedAnswerValues = params[0];
+        return [{}];
+      }
+      return [{ insertId: 99 }];
+    },
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+  });
+
+  const req = {
+    params: { surveyId: '1' },
+    body: { respondent_name: 'Tester', answers: [{ question_id: 999, answer_text: 'injected' }], share_token: 'tok-1' },
+    ip: '127.0.0.1',
+  };
+  const res = mockRes();
+  await ctrl.submit(req, res);
+  db.getConnection = originalGetConnection;
+
+  assert.equal(res.statusCode, 201);
+  // The foreign answer must never reach the INSERT at all.
+  assert.equal(insertedAnswerValues, 'not-called');
+});
+
+test('submit — a score outside the question\'s configured range is dropped instead of stored (regression test for score-injection fix)', async () => {
+  const originalGetConnection = db.getConnection;
+  let insertedAnswerValues = null;
+  db.getConnection = async () => ({
+    beginTransaction: async () => {},
+    query: async (sql, params) => {
+      if (sql.includes('FROM surveys') && sql.includes("status = 'active'")) return [[{ id: 1 }]];
+      if (sql.includes('question_type')) {
+        return [[{ id: 10, question_type: 'scale', options_json: JSON.stringify({ min: 1, max: 5 }) }]];
+      }
+      if (sql.includes('is_required = 1')) return [[]];
+      if (sql.includes('INSERT INTO response_answers')) {
+        insertedAnswerValues = params[0];
+        return [{}];
+      }
+      return [{ insertId: 99 }];
+    },
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+  });
+
+  const req = {
+    params: { surveyId: '1' },
+    // 999999 is nowhere near this scale question's configured 1-5 range.
+    body: { respondent_name: 'Tester', answers: [{ question_id: 10, score: 999999 }], share_token: 'tok-1' },
+    ip: '127.0.0.1',
+  };
+  const res = mockRes();
+  await ctrl.submit(req, res);
+  db.getConnection = originalGetConnection;
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(insertedAnswerValues[0][4], null);
 });

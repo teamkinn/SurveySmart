@@ -8,7 +8,7 @@
   --gold-pale: #FDF8EC;
   --slate: #F3F5FA;
   --slate2: #E6EAF3;
-  --line: #D2DAE8;
+  --line: #A9B8D6;
   --text: #182040;
   --text2: #3D4F70;
   --text3: #6B7FA3;
@@ -125,7 +125,13 @@ body {
 .btn-red { background: var(--red); color: white; }
 
 /* ─── MAIN CONTENT ─── */
-.main-content { flex: 1; overflow-y: auto; }
+/* min-height: 0 overrides the flex item's default min-height:auto, which
+   otherwise refuses to let this box shrink below its content size inside a
+   column flex parent — without it, overflow-y:auto has no bounded height to
+   ever kick in against, so this box silently stops being the scroll owner
+   and the outer shell (see MainLayout.vue) takes over instead depending on
+   content length per tab, which is what made scrolling feel inconsistent. */
+.main-content { flex: 1; min-height: 0; overflow-y: auto; }
 .page-panel { padding: 24px 28px; }
 
 /* ─── PAGE TITLE ─── */
@@ -161,9 +167,12 @@ body {
   background: var(--white); border: 1px solid var(--line); border-radius: var(--r);
   padding: 16px 18px; box-shadow: var(--sh1); transition: box-shadow .15s, transform .15s; position: relative;
 }
-.survey-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--royal); border-radius: var(--r) var(--r) 0 0; }
+.survey-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--card-accent, var(--royal)); border-radius: var(--r) var(--r) 0 0; }
 .survey-card:hover { box-shadow: var(--sh2); transform: translateY(-2px); }
-.survey-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
+.survey-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.album-tag { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text3); font-weight: 600; }
+.album-tag-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.album-tag-none .album-tag-dot { background: var(--line); }
 .survey-badge { padding: 2px 8px; border-radius: var(--r2); font-size: 10px; font-weight: 700; letter-spacing: .3px; }
 .badge-active { background: var(--green-lt); color: var(--green); }
 .badge-draft  { background: var(--amber-lt); color: var(--amber); }
@@ -238,6 +247,7 @@ body {
 .interp-3 { background: var(--amber-lt); color: var(--amber); }
 .interp-2 { background: #fee2e2; color: #991b1b; }
 .interp-1 { background: var(--slate2); color: var(--text3); }
+.interp-none { background: var(--slate2); color: var(--text3); }
 
 /* ─── OVERLAYS / MODALS ─── */
 .overlay { display: none; position: fixed; inset: 0; background: rgba(13,43,85,.6); z-index: 100; align-items: center; justify-content: center; padding: 20px; }

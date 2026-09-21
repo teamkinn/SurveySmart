@@ -41,3 +41,10 @@ test('interpClass/interpText — score-band thresholds are inclusive at each bou
   assert.equal(interpText(5), 'ดีมาก');
   assert.equal(interpText(1), 'ควรปรับปรุง');
 });
+
+test('interpClass/interpText — NaN and other non-numeric input get an explicit "no data" result, not lumped in with the worst score band (regression test)', () => {
+  assert.equal(interpClass(NaN), 'interp-none');
+  assert.equal(interpText(NaN), '—');
+  assert.equal(interpClass(undefined), 'interp-none');
+  assert.equal(interpText(undefined), '—');
+});

@@ -1,14 +1,20 @@
 const db = require('../config/db');
 
-// Only accept the fixed palette offered in the UI's color-swatch picker —
-// keeps stored colors predictable and rules out someone POSTing arbitrary
-// CSS (e.g. "red; background-image:url(...)"). Mirrors the swatches shown
-// in AlbumSidebar.vue.
-const ALLOWED_COLORS = ['#1A56A0', '#C9A84C', '#166534', '#B91C1C', '#7C3AED'];
-const DEFAULT_COLOR = ALLOWED_COLORS[0];
+// The UI now lets a user pick any custom color (AlbumSidebar.vue's 5th
+// "palette" swatch, backed by a native <input type="color"> + hex text
+// field), not just a fixed set of presets — so this only needs to validate
+// the *shape* of the value (a proper 6-digit hex color), not match it
+// against a whitelist. Still rules out someone POSTing arbitrary CSS (e.g.
+// "red; background-image:url(...)") the same way the old whitelist did;
+// anything that isn't exactly "#" + 6 hex digits falls back to the default
+// instead of being stored as-is. Normalized to uppercase so
+// "#1a56a0" (native color input's lowercase output) and "#1A56A0" (a preset
+// swatch or someone typing it by hand) are stored identically.
+const DEFAULT_COLOR = '#1A56A0';
+const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 
 function normalizeColor(color) {
-  return ALLOWED_COLORS.includes(color) ? color : DEFAULT_COLOR;
+  return typeof color === 'string' && HEX_COLOR_RE.test(color) ? color.toUpperCase() : DEFAULT_COLOR;
 }
 
 // Coerces any body value into a trimmed name string, safely — used by both

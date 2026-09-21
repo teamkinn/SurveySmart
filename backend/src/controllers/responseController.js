@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { resolveChoiceScore, scoreFromLikertLabel } = require('../utils/likertScore');
 
 // Owner, admin, a user the survey was explicitly shared with (survey_shares),
 // or anyone when the owner opted the survey into shared_all — may view a
@@ -51,23 +52,76 @@ exports.list = async (req, res) => {
   }
 };
 
+// Clamps a raw client-supplied score to the question's own configured range
+// (scale: options.min/max; star: 0..max_stars) before it's trusted for
+// storage/aggregation. Out-of-range or non-numeric input is dropped (null)
+// rather than stored — this is a public, unauthenticated endpoint, so a
+// submitter could otherwise plant an arbitrary large/negative score to skew
+// overall_score / v_question_stats averages. Other types (radio/dropdown
+// embed a score parsed from their label, e.g. "ดีมาก (5)") get a generous
+// blanket sanity bound instead of a per-type one.
+function sanitizeScore(question, rawScore) {
+  if (rawScore === undefined || rawScore === null || rawScore === '') return null;
+  const n = parseFloat(rawScore);
+  if (isNaN(n)) return null;
+
+  let opts = question?.options_json ?? null;
+  if (typeof opts === 'string') { try { opts = JSON.parse(opts); } catch { opts = null; } }
+
+  let min = 0, max = 100;
+  if (question?.question_type === 'scale' && opts && !Array.isArray(opts)) {
+    min = opts.min ?? 1;
+    max = opts.max ?? 5;
+  } else if (question?.question_type === 'star') {
+    min = 0;
+    max = (opts && !Array.isArray(opts) && opts.max_stars) || 5;
+  }
+  return n >= min && n <= max ? n : null;
+}
+
+// Public, unauthenticated endpoint — bound how many answers a single
+// submission can carry regardless of what the survey actually asks, mirroring
+// the row cap already enforced on CSV import.
+const MAX_ANSWERS_PER_SUBMISSION = 500;
+
 exports.submit = async (req, res) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
 
     const { surveyId } = req.params;
-    const { respondent_name, answers = [] } = req.body;
+    const { respondent_name, answers = [], share_token } = req.body;
 
-    // Only accept submissions for active surveys
+    if (!Array.isArray(answers) || answers.length > MAX_ANSWERS_PER_SUBMISSION) {
+      await conn.rollback();
+      return res.status(400).json({ message: 'ข้อมูลคำตอบไม่ถูกต้อง' });
+    }
+
+    // Only accept submissions for active surveys reached via their own
+    // share_token. Checking status alone let anyone iterate the plain
+    // sequential survey id and POST forged responses to any active survey
+    // system-wide, without ever having received its share link/QR code —
+    // share_token is what's supposed to gate that, so submission must
+    // require it too, not just the public GET that loads the form.
     const [[survey]] = await conn.query(
-      "SELECT id FROM surveys WHERE id = ? AND status = 'active'",
-      [surveyId]
+      "SELECT id FROM surveys WHERE id = ? AND status = 'active' AND share_token = ?",
+      [surveyId, share_token || null]
     );
     if (!survey) {
       await conn.rollback();
       return res.status(403).json({ message: 'แบบสอบถามนี้ปิดรับคำตอบแล้ว' });
     }
+
+    // Load this survey's own questions so every answer below can be checked
+    // to actually belong to it, instead of trusting a client-supplied
+    // question_id as-is (which could otherwise point at a question on a
+    // completely different survey).
+    const [surveyQuestions] = await conn.query(
+      'SELECT id, question_type, options_json FROM questions WHERE survey_id = ?',
+      [surveyId]
+    );
+    const questionById = new Map(surveyQuestions.map(q => [q.id, q]));
+    const safeAnswers = answers.filter(a => a && questionById.has(a.question_id));
 
     // Required-question validation — the frontend already enforces this, but
     // the API must not trust the client; anyone can POST here directly with
@@ -77,7 +131,7 @@ exports.submit = async (req, res) => {
       [surveyId]
     );
     if (requiredQuestions.length) {
-      const answerByQuestionId = new Map(answers.map(a => [a.question_id, a]));
+      const answerByQuestionId = new Map(safeAnswers.map(a => [a.question_id, a]));
       const hasAnswer = a => {
         if (!a) return false;
         if (a.answer_text && String(a.answer_text).trim()) return true;
@@ -98,7 +152,14 @@ exports.submit = async (req, res) => {
     // Input length guard
     const name = (respondent_name || 'ไม่ระบุ').slice(0, 200);
 
-    const scores = answers.map(a => parseFloat(a.score)).filter(s => !isNaN(s));
+    const answerRows = safeAnswers.map(a => [
+      a.question_id,
+      a.answer_text ? String(a.answer_text).slice(0, 5000) : null,
+      a.answer_json ? JSON.stringify(a.answer_json).slice(0, 10000) : null,
+      sanitizeScore(questionById.get(a.question_id), a.score),
+    ]);
+
+    const scores = answerRows.map(r => r[3]).filter(s => s !== null);
     const overall = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : null;
 
     const ip = req.ip || null;
@@ -109,18 +170,26 @@ exports.submit = async (req, res) => {
     );
     const responseId = resResult.insertId;
 
-    if (answers.length) {
-      const vals = answers.map(a => [
+    // Self-assign external_id = this response's own id. Without this, a
+    // native submission's external_id stays NULL forever, so exporting it
+    // (composables/useCsv.js buildResponseExportRows writes the response's
+    // own id into the CSV's "id" column) and importing that file straight
+    // back into the SAME survey wouldn't be recognized as a duplicate on the
+    // very first re-import — importCsv can only dedup against an existing
+    // external_id, and NULL never matches anything. Since ids are globally
+    // unique across the whole table, this can never collide with anything
+    // (own uq_survey_external_id key is scoped per survey_id, which is even
+    // narrower). Doesn't affect Google Forms sync's own dedup, which uses
+    // the separate google_response_id column instead.
+    await conn.query('UPDATE responses SET external_id = ? WHERE id = ?', [String(responseId), responseId]);
+
+    if (answerRows.length) {
+      const vals = answerRows.map(([questionId, answerText, answerJson, score]) => [
         responseId,
-        a.question_id,
-        a.answer_text  ? String(a.answer_text).slice(0, 5000)  : null,
-        a.answer_json  ? JSON.stringify(a.answer_json).slice(0, 10000) : null,
-        // isNaN check (not ||) — a genuine answer of 0 (e.g. a scale
-        // question configured with min: 0) must not be coerced to NULL
-        // just because 0 is falsy.
-        a.score !== undefined && a.score !== null && a.score !== '' && !isNaN(parseFloat(a.score))
-          ? parseFloat(a.score)
-          : null,
+        questionId,
+        answerText,
+        answerJson,
+        score,
       ]);
       await conn.query(
         'INSERT INTO response_answers (response_id, question_id, answer_text, answer_json, score) VALUES ?',
@@ -155,8 +224,13 @@ exports.submit = async (req, res) => {
 // Dedup: an optional id/response_id/external_id column is stored as
 // responses.external_id (scoped per survey). Re-importing a file that mixes
 // previously-imported rows with new ones silently skips rows whose ID was
-// already imported instead of duplicating them. Without that column,
-// nothing is deduped — every row always inserts as a new response.
+// already imported instead of duplicating them. Without that column, this
+// import batch itself can't dedup rows against each other or a previous run
+// of the same file — but each inserted row still gets external_id
+// self-assigned to its own new id right after insert (same as
+// responseController.submit for native submissions), so a *later* export of
+// this survey and re-import back into it can still be recognized as a
+// duplicate.
 exports.importCsv = async (req, res) => {
   try {
     const surveyId = req.params.surveyId;
@@ -247,14 +321,8 @@ exports.importCsv = async (req, res) => {
       }
     }
 
-    const parseJsonSafe = v => {
-      if (!v) return null;
-      if (typeof v !== 'string') return v;
-      try { return JSON.parse(v); } catch { return null; }
-    };
-
     const conn = await db.getConnection();
-    let imported = 0, skipped = 0, duplicates = 0;
+    let imported = 0, skipped = 0, duplicates = 0, unscoredChoiceCells = 0;
     try {
       await conn.beginTransaction();
 
@@ -273,7 +341,6 @@ exports.importCsv = async (req, res) => {
           if (!cell) continue;
 
           let answerText = null, answerJson = null, score = null;
-          const opts = parseJsonSafe(q.options_json);
 
           if (q.question_type === 'checkbox') {
             const values = cell.split(';').map(v => v.trim()).filter(Boolean);
@@ -289,13 +356,16 @@ exports.importCsv = async (req, res) => {
           } else if (['radio', 'dropdown'].includes(q.question_type)) {
             answerText = cell;
             answerJson = JSON.stringify({ value: cell });
-            const m = cell.match(/\((\d+(?:\.\d+)?)\)\s*$/);
-            if (m) {
-              score = parseFloat(m[1]);
-            } else if (Array.isArray(opts) && opts.length > 1) {
-              const oi = opts.indexOf(cell);
-              if (oi !== -1) score = oi + 1;
-            }
+            // Score comes from an explicit "(n)" suffix or the shared Thai
+            // Likert label dictionary (utils/likertScore.js) — NEVER from
+            // this option's position in `opts`. Options are very commonly
+            // authored best-first ("มากที่สุด, มาก, ... , น้อยที่สุด"), which
+            // a position-based guess (index 0 -> score 1) would silently
+            // invert; see the comment at the top of likertScore.js for the
+            // incident that motivated this. An unrecognized label is left
+            // unscored (counted below) rather than guessed.
+            score = resolveChoiceScore(cell);
+            if (score == null) unscoredChoiceCells++;
           } else {
             // short / para / date / time / file / mcgrid / cbgrid — grid
             // answers aren't reconstructable from a single flat CSV cell,
@@ -332,6 +402,24 @@ exports.importCsv = async (req, res) => {
           throw e;
         }
 
+        // A row imported without an id/response_id/external_id column in
+        // the CSV (externalId still null here) — self-assign external_id =
+        // its own new id, same as responseController.submit /
+        // publicResponseController.submitFromGoogleForm do for native
+        // submissions (see the comment there). Without this, a CSV-imported
+        // response could never be recognized as a duplicate on a future
+        // export -> re-import into this same survey, even though every
+        // other response already can be. Safe: doesn't touch the
+        // ER_DUP_ENTRY check above, which already ran against the
+        // *original* externalId (still null at that point) before this row
+        // ever reaches here — rows imported from the same id-less file
+        // still never dedup against each other or a previous run of it, per
+        // the "rows without any id column never dedup against each other"
+        // test — this only affects what happens on a *later* export/import.
+        if (externalId == null) {
+          await conn.query('UPDATE responses SET external_id = ? WHERE id = ?', [String(responseId), responseId]);
+        }
+
         await conn.query(
           'INSERT INTO response_answers (response_id, question_id, answer_text, answer_json, score) VALUES ?',
           [answerRows.map(([qid, text, json, score]) => [responseId, qid, text, json, score])]
@@ -353,6 +441,12 @@ exports.importCsv = async (req, res) => {
       skipped,
       matchedColumns: colToQuestion.size,
       totalQuestions: questions.length,
+      // Radio/dropdown cells whose text didn't match an explicit "(n)"
+      // score suffix or a known Likert label (utils/likertScore.js) — left
+      // unscored on purpose rather than guessed. A non-zero count is worth
+      // surfacing to the importing admin: it usually means the survey uses
+      // custom option wording that isn't in the dictionary yet.
+      unscoredChoiceCells,
     });
   } catch (err) {
     console.error('responses.importCsv error:', err.message);
@@ -395,6 +489,19 @@ exports.chartData = async (req, res) => {
 
       let chartType = 'none';
       let data = [];
+      // True only for radio/dropdown/checkbox questions whose entire option
+      // set is a recognized Thai Likert-scale family (see likertScore.js) —
+      // e.g. "น้อยที่สุด/น้อย/ปานกลาง/มาก/มากที่สุด". Distinguishes a real
+      // rating question from an open-text question that merely happens to
+      // be *titled* with a feedback word like "ความคิดเห็น" (a very common
+      // phrasing for Thai satisfaction-rating questions, e.g. "ระดับความ
+      // คิดเห็นต่อ..."). Without this, ResponsesView.vue's text-based
+      // isFeedbackQuestionText() keyword match would treat such a rating
+      // question as an open-feedback question too, pulling its Likert
+      // answers ("มาก", "มากที่สุด") into the "ความคิดเห็นล่าสุด" comments
+      // panel instead of actual free-text answers, and hiding its own
+      // bar/donut chart in the process.
+      let isLikertScale = false;
 
       if (['radio', 'checkbox', 'dropdown'].includes(q.question_type)) {
         chartType = 'bar';
@@ -411,6 +518,7 @@ exports.chartData = async (req, res) => {
           }
         });
         data = labels.map(l => ({ label: l, count: counts[l] || 0 }));
+        isLikertScale = labels.length > 0 && labels.every(l => scoreFromLikertLabel(l) !== null);
       } else if (['scale', 'star'].includes(q.question_type)) {
         chartType = 'score';
         // ?? (not ||) — a deliberately-configured min of 0 must not be
@@ -459,6 +567,7 @@ exports.chartData = async (req, res) => {
         question_text: q.question_text,
         question_type: q.question_type,
         chartType,
+        isLikertScale,
         data,
         total,
       };

@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 
 const app = express();
 
@@ -8,6 +9,13 @@ app.set('trust proxy', 1);
 const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((o) => o.trim());
+
+// Baseline security headers (HSTS, X-Content-Type-Options, X-Frame-Options,
+// etc.) for every response. contentSecurityPolicy is off: this is primarily
+// a JSON API, but routes/googleAuth.js's OAuth callback returns a small HTML
+// page with an inline <script> to close the popup — helmet's default CSP
+// would block that inline script and break the Google Forms connect flow.
+app.use(helmet({ contentSecurityPolicy: false }));
 
 app.use(
   cors({

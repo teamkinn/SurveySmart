@@ -64,6 +64,9 @@
                 <div class="im-stat-label">การตอบสนอง</div>
               </div>
             </div>
+            <p v-if="result.responseFetchFailed" class="im-status-sub" style="margin-top:8px;">
+              ⚠️ นำเข้าคำถามสำเร็จ แต่ดึงคำตอบจาก Google Forms ไม่สำเร็จ — ลองกด "ซิงค์ตอนนี้" อีกครั้งภายหลัง
+            </p>
           </div>
         </template>
 
@@ -111,7 +114,7 @@ const isOpen = ref(false);
 const phase = ref('input');
 const formUrl = ref('');
 const errorMsg = ref('');
-const result = ref({ title: '', questionCount: 0, responseCount: 0 });
+const result = ref({ title: '', questionCount: 0, responseCount: 0, responseFetchFailed: false });
 
 function open() {
   formUrl.value = '';
@@ -120,7 +123,15 @@ function open() {
   isOpen.value = true;
 }
 
-function close() { isOpen.value = false; }
+function close() {
+  // Without this, closing via ✕ while a Google auth popup is in flight left
+  // it running — if it resolved after the user had already moved on, doImport
+  // would still POST /google/import-form and emit('imported') for an import
+  // the user believed they'd cancelled.
+  activeAuthPopup?.cancel();
+  activeAuthPopup = null;
+  isOpen.value = false;
+}
 
 function closeAndGo() {
   isOpen.value = false;

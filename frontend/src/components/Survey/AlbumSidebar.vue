@@ -62,13 +62,40 @@
       />
       <div class="album-swatches">
         <span
-          v-for="c in colors"
+          v-for="c in recentColors"
           :key="c"
           class="album-swatch"
           :class="{ sel: c === newColor }"
           :style="{ background: c }"
-          @click="newColor = c"
+          :title="c"
+          @click="pickColor(c)"
         ></span>
+        <button
+          type="button"
+          class="album-swatch album-swatch-custom"
+          :class="{ sel: showCustomPicker || !recentColors.includes(newColor) }"
+          title="เลือกสีเอง"
+          aria-label="เลือกสีเอง"
+          @click="showCustomPicker = !showCustomPicker"
+        ></button>
+      </div>
+      <div v-if="showCustomPicker" class="album-custom-row">
+        <input
+          type="color"
+          class="album-color-native"
+          :value="newColor"
+          title="จานสี"
+          @input="onNativeColor"
+        />
+        <input
+          v-model="hexDraft"
+          class="album-hex-input"
+          type="text"
+          placeholder="#RRGGBB"
+          maxlength="7"
+          :class="{ invalid: hexDraft && !isValidHex(hexDraft) }"
+          @input="onHexInput"
+        />
       </div>
       <button class="btn-sm btn-blue" style="width:100%;" :disabled="creating" @click="create">+ สร้างอัลบัม</button>
     </div>
@@ -76,7 +103,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 
 const props = defineProps({
   albums: { type: Array, default: () => [] },
@@ -92,15 +119,75 @@ const props = defineProps({
 });
 const emit = defineEmits(['filter', 'assign', 'create', 'delete', 'rename']);
 
-// Fixed palette — must match backend ALLOWED_COLORS in albumController.js,
-// which silently falls back to the default for any other value.
-const colors = ['#1A56A0', '#C9A84C', '#166534', '#B91C1C', '#7C3AED'];
+// A small starter set, only used to pad out recentColors below when the
+// caller doesn't have 4 albums yet (brand-new account) — not a restriction
+// on what can be picked. Any hex color is accepted; the backend
+// (albumController.js normalizeColor) validates the *shape* of the value,
+// not membership in a fixed list.
+const FALLBACK_COLORS = ['#1A56A0', '#C9A84C', '#166534', '#B91C1C', '#7C3AED'];
+
+// The 4 quick-pick swatches are the colors actually most recently put to
+// use — the color of whichever albums were created most recently, deduped —
+// rather than a fixed palette. Padded with FALLBACK_COLORS when there
+// aren't 4 distinct colors in use yet.
+const recentColors = computed(() => {
+  const seen = new Set();
+  const list = [];
+  const sorted = [...props.albums].sort(
+    (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
+  );
+  for (const a of sorted) {
+    if (a.color && !seen.has(a.color)) {
+      seen.add(a.color);
+      list.push(a.color);
+    }
+    if (list.length >= 4) break;
+  }
+  for (const c of FALLBACK_COLORS) {
+    if (list.length >= 4) break;
+    if (!seen.has(c)) {
+      seen.add(c);
+      list.push(c);
+    }
+  }
+  return list;
+});
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+function isValidHex(v) {
+  return HEX_RE.test(v);
+}
 
 const dragOverId = ref(null);
 const newName = ref('');
-const newColor = ref(colors[0]);
+const newColor = ref(FALLBACK_COLORS[0]);
 const renamingId = ref(null);
 const renameDraft = ref('');
+const showCustomPicker = ref(false);
+const hexDraft = ref('');
+
+function pickColor(c) {
+  newColor.value = c;
+  showCustomPicker.value = false;
+}
+
+// Native <input type="color"> always emits a valid 7-char "#rrggbb" value —
+// no validation needed, just keep the hex text field in sync with it.
+function onNativeColor(e) {
+  newColor.value = e.target.value.toUpperCase();
+  hexDraft.value = newColor.value;
+}
+
+// The text field, unlike the native picker, can be mid-typo at any
+// keystroke ("#1A5") — only commit to newColor once it's a complete, valid
+// 6-digit hex value, so a half-typed value can't be submitted with the
+// survey and the swatch/native-picker preview don't flicker to garbage.
+function onHexInput() {
+  let v = hexDraft.value.trim();
+  if (v && !v.startsWith('#')) v = `#${v}`;
+  hexDraft.value = v;
+  if (isValidHex(v)) newColor.value = v.toUpperCase();
+}
 
 function onDrop(e, albumId) {
   dragOverId.value = null;
@@ -114,6 +201,7 @@ function create() {
   if (!name || props.creating) return;
   emit('create', { name, color: newColor.value });
   newName.value = '';
+  showCustomPicker.value = false;
 }
 
 function startRename(album) {
@@ -213,7 +301,39 @@ function confirmDelete(album) {
   outline: none;
   margin-bottom: 6px;
 }
-.album-swatches { display: flex; gap: 5px; margin-bottom: 7px; }
-.album-swatch { width: 16px; height: 16px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; display: inline-block; }
+.album-swatches { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; align-items: center; }
+.album-swatch { width: 16px; height: 16px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; display: inline-block; padding: 0; }
 .album-swatch.sel { border-color: var(--text); }
+.album-swatch-custom {
+  background: conic-gradient(from 180deg, #e11d48, #f59e0b, #22c55e, #06b6d4, #6366f1, #e11d48);
+  outline: none;
+}
+.album-custom-row { display: flex; align-items: center; gap: 6px; margin-bottom: 7px; }
+.album-new input.album-color-native {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+  background: none;
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+.album-color-native::-webkit-color-swatch-wrapper { padding: 2px; }
+.album-color-native::-webkit-color-swatch { border: none; border-radius: 3px; }
+.album-new input.album-hex-input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  font-size: 11.5px;
+  font-family: 'Sarabun', sans-serif;
+  padding: 5px 7px;
+  border: 1.5px solid var(--line);
+  border-radius: 5px;
+  outline: none;
+  text-transform: uppercase;
+  margin-bottom: 0;
+}
+.album-hex-input.invalid { border-color: var(--red); }
 </style>

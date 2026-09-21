@@ -104,8 +104,13 @@
           <span class="date-arrow">→</span>
           <input type="date" v-model="filterTo" />
         </div>
-        <select v-model.number="filterQuestionId" class="filter-select pill-select" v-if="categoricalCharts.length > 1" style="min-width:140px;">
-          <option v-for="c in categoricalCharts" :key="c.question_id" :value="c.question_id">{{ c.question_text }}</option>
+        <select v-model.number="filterQuestionId" class="filter-select pill-select" v-if="categoricalCharts.length > 1" style="min-width:160px;max-width:280px;">
+          <optgroup label="ข้อมูลทั่วไป" v-if="generalQuestions.length">
+            <option v-for="c in generalQuestions" :key="c.question_id" :value="c.question_id" :title="c.question_text">{{ c.question_text }}</option>
+          </optgroup>
+          <optgroup label="คำถามในแบบสอบถาม" v-if="opinionQuestions.length">
+            <option v-for="c in opinionQuestions" :key="c.question_id" :value="c.question_id" :title="c.question_text">{{ truncateQuestionText(c.question_text) }}</option>
+          </optgroup>
         </select>
         <select v-model="filterGender" class="filter-select pill-select" v-if="genderOptions.length" style="min-width:120px;">
           <option value="">{{ selectedCategoricalQuestionText }}: ทั้งหมด</option>
@@ -172,44 +177,91 @@
       <!-- ── Charts Row: Pie Chart (gender) + Avg Score Bar ── -->
       <div class="charts-2col">
 
-        <!-- SVG Pie/Donut for categorical (gender) -->
+        <!-- Categorical chart card: donut / bar / table, user-selectable via one menu button -->
         <div v-for="c in categoricalCharts" :key="c.question_id" class="chart-card">
-          <div class="chart-q-text">{{ c.question_text }}</div>
-          <div class="chart-q-meta">{{ c.total }} คำตอบ · การแจกแจง</div>
+          <div class="chart-card-header">
+            <div>
+              <div class="chart-q-text">{{ c.question_text }}</div>
+              <div class="chart-q-meta">{{ c.total }} คำตอบ · การแจกแจง</div>
+            </div>
+            <div class="chart-type-picker">
+              <button
+                type="button"
+                class="chart-type-btn"
+                :class="{ 'menu-open': openChartMenuId === c.question_id }"
+                @click.stop="toggleChartMenu(c.question_id)"
+              ><span>{{ chartTypeIcon(c.question_id) }}</span><span class="caret">▾</span></button>
+              <div
+                class="chart-type-menu"
+                :class="{ open: openChartMenuId === c.question_id }"
+                @click.stop
+              >
+                <button
+                  v-for="opt in CHART_TYPE_OPTIONS"
+                  :key="opt.value"
+                  type="button"
+                  class="chart-type-opt"
+                  :class="{ active: chartTypeFor(c.question_id) === opt.value }"
+                  @click="setChartType(c.question_id, opt.value)"
+                ><span class="opt-icon">{{ opt.icon }}</span>{{ opt.label }}<span class="opt-check">✓</span></button>
+              </div>
+            </div>
+          </div>
           <div v-if="!c.total" class="text-empty">ยังไม่มีคำตอบ</div>
-          <div v-else class="donut-area">
-            <svg viewBox="0 0 36 36" class="donut-svg">
-              <!-- background ring -->
-              <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e8edf5" stroke-width="3.8"/>
-              <!-- segments -->
-              <circle
-                v-for="seg in donutSegments(c.data, c.total)"
-                :key="seg.label"
-                cx="18" cy="18" r="15.9"
-                fill="none"
-                :stroke="seg.color"
-                stroke-width="3.8"
-                pathLength="100"
-                :stroke-dasharray="`${seg.pct} ${100 - seg.pct}`"
-                :stroke-dashoffset="seg.offset"
-              />
-              <!-- center label -->
-              <text x="18" y="16.5" text-anchor="middle" class="svg-num">{{ c.total }}</text>
-              <text x="18" y="21.5" text-anchor="middle" class="svg-sub">คน</text>
-            </svg>
-            <div class="donut-legend">
-              <div v-for="(item, i) in c.data" :key="item.label"
-                   class="legend-item" :class="{ 'legend-item-zero': item.count === 0 }">
-                <span class="legend-dot"
-                      :style="{ background: item.count > 0 ? donutColors[i % donutColors.length] : '#dde3ee' }"></span>
-                <span class="legend-label">{{ item.label }}</span>
-                <span class="legend-count">
+          <template v-else>
+            <div v-if="chartTypeFor(c.question_id) === 'donut'" class="donut-area">
+              <svg viewBox="0 0 36 36" class="donut-svg">
+                <!-- background ring -->
+                <circle cx="18" cy="18" r="15.9" fill="none" stroke="#e8edf5" stroke-width="3.8"/>
+                <!-- segments -->
+                <circle
+                  v-for="seg in donutSegments(c.data, c.total)"
+                  :key="seg.label"
+                  cx="18" cy="18" r="15.9"
+                  fill="none"
+                  :stroke="seg.color"
+                  stroke-width="3.8"
+                  pathLength="100"
+                  :stroke-dasharray="`${seg.pct} ${100 - seg.pct}`"
+                  :stroke-dashoffset="seg.offset"
+                />
+                <!-- center label -->
+                <text x="18" y="15.5" text-anchor="middle" class="svg-num">{{ c.total }}</text>
+                <text x="18" y="23" text-anchor="middle" class="svg-sub">คน</text>
+              </svg>
+              <div class="donut-legend">
+                <div v-for="(item, i) in c.data" :key="item.label"
+                     class="legend-item" :class="{ 'legend-item-zero': item.count === 0 }">
+                  <span class="legend-dot"
+                        :style="{ background: item.count > 0 ? donutColors[i % donutColors.length] : '#dde3ee' }"></span>
+                  <span class="legend-label">{{ item.label }}</span>
+                  <span class="legend-count">
+                    {{ item.count }}
+                    <span v-if="item.count > 0" class="legend-pct">({{ Math.round(item.count / c.total * 100) }}%)</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div v-else-if="chartTypeFor(c.question_id) === 'bar'" class="cat-bar-list">
+              <div v-for="(item, i) in c.data" :key="item.label" class="cat-bar-row">
+                <span class="cat-bar-label" :title="item.label">{{ item.label }}</span>
+                <div class="cat-bar-track">
+                  <div class="cat-bar-fill" :style="{ width: (item.count / c.total * 100) + '%', background: item.count > 0 ? donutColors[i % donutColors.length] : '#dde3ee' }"></div>
+                </div>
+                <span class="cat-bar-count">
                   {{ item.count }}
                   <span v-if="item.count > 0" class="legend-pct">({{ Math.round(item.count / c.total * 100) }}%)</span>
                 </span>
               </div>
             </div>
-          </div>
+            <table v-else class="cat-table">
+              <tr v-for="item in c.data" :key="item.label">
+                <td class="t-label">{{ item.label }}</td>
+                <td class="t-count">{{ item.count }}</td>
+                <td class="t-pct">{{ item.count > 0 ? Math.round(item.count / c.total * 100) + '%' : '—' }}</td>
+              </tr>
+            </table>
+          </template>
         </div>
 
         <!-- Average Score Bar Card -->
@@ -354,6 +406,46 @@ function initials(name) {
 
 const donutColors = ['#1a56a0', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#f97316'];
 
+// User-selectable chart display per categorical question (donut / bar /
+// table), picked from a single dropdown-menu button so the card header
+// doesn't turn into a row of buttons. Remembered per-survey in
+// localStorage so the choice survives tab switches and page reloads.
+const CHART_TYPE_OPTIONS = [
+  { value: 'donut', label: 'วงกลม', icon: '\u{1F369}' },
+  { value: 'bar', label: 'แท่ง', icon: '\u{1F4CA}' },
+  { value: 'table', label: 'ตาราง', icon: '\u{1F4CB}' },
+];
+const chartTypeMap = ref({});
+const openChartMenuId = ref(null);
+
+function chartTypeStorageKey(surveyId) { return `dashChartType_${surveyId}`; }
+function loadChartTypeMap(surveyId) {
+  try {
+    const raw = localStorage.getItem(chartTypeStorageKey(surveyId));
+    chartTypeMap.value = raw ? JSON.parse(raw) : {};
+  } catch {
+    chartTypeMap.value = {};
+  }
+}
+function chartTypeFor(questionId) { return chartTypeMap.value[questionId] || 'donut'; }
+function chartTypeIcon(questionId) {
+  return CHART_TYPE_OPTIONS.find(o => o.value === chartTypeFor(questionId))?.icon || CHART_TYPE_OPTIONS[0].icon;
+}
+function toggleChartMenu(questionId) {
+  openChartMenuId.value = openChartMenuId.value === questionId ? null : questionId;
+}
+function setChartType(questionId, type) {
+  chartTypeMap.value = { ...chartTypeMap.value, [questionId]: type };
+  openChartMenuId.value = null;
+  try {
+    localStorage.setItem(chartTypeStorageKey(route.params.id), JSON.stringify(chartTypeMap.value));
+  } catch { /* private-mode/quota errors: the choice just won't persist */ }
+}
+// Close whichever chart-type menu is open on any outside click.
+function closeChartMenuOnOutsideClick() { openChartMenuId.value = null; }
+onMounted(() => window.addEventListener('click', closeChartMenuOnOutsideClick));
+onBeforeUnmount(() => window.removeEventListener('click', closeChartMenuOnOutsideClick));
+
 const survey = computed(() =>
   surveyStore.list.find(s => s.id === Number(route.params.id)) ||
   surveyStore.shared.find(s => s.id === Number(route.params.id)) ||
@@ -365,10 +457,69 @@ const isShared = computed(() =>
 
 const isScoreLabel = label => /\(\d+(?:\.\d+)?\)\s*$/.test(label);
 
-// Only categorical radio charts (no score pattern in labels) → donut
+// Detects an open-feedback question ("ข้อเสนอแนะเพิ่มเติม", "ความคิดเห็น...",
+// etc.) by its QUESTION TEXT rather than its stored question_type. Why:
+// this app's own CSV-based survey reconstruction (composables/useCsv.js's
+// guessQuestionType) can misdetect a free-text column as a 'radio'/
+// 'dropdown' categorical question whenever the sample data only has a
+// handful of distinct answers — which is exactly what a short/blank-heavy
+// "any comments?" column tends to look like. When that happens, the
+// question's real answers (people's actual written feedback) end up
+// rendered as a nonsensical bar/donut "distribution" chart instead of
+// showing up as comments, AND they don't get picked up by the ความคิดเห็น
+// ล่าสุด widget (loadResponses' note derivation, below) since that used to
+// require question_type === 'para'. Matching on the question's own text
+// instead — the same convention already used for name-question detection
+// (backend nameFromQuestionIdx: q.question_text.includes('ชื่อ')) — means
+// a mistyped question, or a differently-typed one on a future survey, still
+// gets treated as feedback instead of silently falling through the cracks.
+const FEEDBACK_KEYWORDS = ['ข้อเสนอแนะ', 'เสนอแนะ', 'ความคิดเห็น', 'ความเห็น', 'comment', 'feedback'];
+function isFeedbackQuestionText(text) {
+  const t = (text || '').toLowerCase();
+  return FEEDBACK_KEYWORDS.some(k => t.includes(k.toLowerCase()));
+}
+// A chart-data entry counts as an open-feedback question only when its text
+// matches the keywords above AND the backend hasn't flagged it as a genuine
+// Likert rating question (isLikertScale — see responseController.js). Thai
+// satisfaction questions are very often worded "ระดับความคิดเห็นต่อ..." /
+// "ความคิดเห็นเกี่ยวกับ..." while still being a 5-point มาก/มากที่สุด rating,
+// not free text — without the isLikertScale guard those questions' rating
+// answers ("มาก") were being pulled into the ความคิดเห็นล่าสุด comments feed
+// instead of the real open-text answers, and their own bar chart was hidden.
+function isFeedbackChart(chart) {
+  return isFeedbackQuestionText(chart.question_text) && !chart.isLikertScale;
+}
+
+// Only categorical radio charts (no score pattern in labels) → donut.
+// Feedback-style questions are excluded even if their stored question_type
+// looks categorical (see isFeedbackQuestionText above) — their answers
+// belong in the ความคิดเห็นล่าสุด comments panel, not a bar/donut card.
 const categoricalCharts = computed(() =>
-  charts.value.filter(c => c.chartType === 'bar' && !c.data.some(d => isScoreLabel(d.label)))
+  charts.value.filter(c =>
+    c.chartType === 'bar' &&
+    !c.data.some(d => isScoreLabel(d.label)) &&
+    !isFeedbackChart(c)
+  )
 );
+
+// The question-picker dropdown mixes short demographic questions (เพศ,
+// อายุ, การศึกษา, อาชีพ) with long numbered opinion/Likert questions,
+// which made the list hard to scan. Split them by whether the question
+// text starts with a leading "1." / "2)" style number — that's how every
+// opinion question in practice is authored, while demographic questions
+// aren't numbered — so the dropdown can group them under separate
+// <optgroup> headings instead of one long flat list.
+const isNumberedQuestion = text => /^\s*\d+[.).]/.test(text || '');
+const generalQuestions = computed(() => categoricalCharts.value.filter(c => !isNumberedQuestion(c.question_text)));
+const opinionQuestions = computed(() => categoricalCharts.value.filter(c => isNumberedQuestion(c.question_text)));
+
+// Long opinion-question text is shortened in the dropdown option itself
+// (native <option> can't be truncated with CSS); the full text stays
+// available as a hover tooltip via the option's title attribute.
+function truncateQuestionText(text, max = 60) {
+  if (!text) return '';
+  return text.length > max ? text.slice(0, max).trimEnd() + '…' : text;
+}
 
 // Satisfaction charts (score pattern in labels) → used for scoreBreakdown
 const satisfactionChart = computed(() =>
@@ -563,12 +714,26 @@ async function loadResponses() {
   ]);
   if (seq !== loadSeq) return; // a newer load started while this was in flight
   charts.value = r2.data;
+  loadChartTypeMap(targetId);
+  // Question ids this survey's chart-data identifies as open feedback by
+  // TEXT (see isFeedbackQuestionText above) — used below as a fallback so a
+  // feedback question stored with the "wrong" question_type still surfaces
+  // as a comment instead of being missed entirely.
+  const feedbackQuestionIds = new Set(
+    r2.data.filter(isFeedbackChart).map(c => c.question_id)
+  );
   responses.value = r1.data.map(r => {
     let answers = r.answers;
     if (typeof answers === 'string') { try { answers = JSON.parse(answers); } catch { answers = []; } }
     answers = Array.isArray(answers) ? answers.filter(a => a && a.question_id) : [];
-    const paraAns = answers.find(a => a.question_type === 'para' && a.answer_text);
-    return { ...r, answers, note: paraAns?.answer_text || null };
+    // Prefer a real 'para' (long free-text) answer, same as before; fall
+    // back to any answer belonging to a feedback-keyword question
+    // (feedbackQuestionIds) regardless of its stored type, so a mistyped
+    // "ข้อเสนอแนะ.../ความคิดเห็น..." question still shows up here.
+    const commentAns =
+      answers.find(a => a.question_type === 'para' && a.answer_text) ||
+      answers.find(a => feedbackQuestionIds.has(a.question_id) && a.answer_text);
+    return { ...r, answers, note: commentAns?.answer_text || null };
   });
 }
 
@@ -712,8 +877,8 @@ onBeforeUnmount(() => {
 /* ── SVG Donut ── */
 .donut-area { display: flex; align-items: center; gap: 20px; margin-top: 14px; flex-wrap: wrap; }
 .donut-svg  { width: 140px; height: 140px; flex-shrink: 0; transform: rotate(-90deg); }
-.svg-num    { font-size: 7px; font-weight: 700; fill: var(--navy); transform: rotate(90deg); transform-origin: 18px 16.5px; }
-.svg-sub    { font-size: 3.5px; fill: var(--text3); transform: rotate(90deg); transform-origin: 18px 21.5px; }
+.svg-num    { font-size: 7px; font-weight: 700; fill: var(--navy); transform: rotate(90deg); transform-origin: 18px 15.5px; }
+.svg-sub    { font-size: 3.6px; letter-spacing: .02em; fill: var(--text3); transform: rotate(90deg); transform-origin: 18px 23px; }
 .donut-legend  { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 100px; }
 .legend-item   { display: flex; align-items: center; gap: 7px; font-size: 12px; }
 .legend-dot    { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
@@ -722,6 +887,52 @@ onBeforeUnmount(() => {
 .legend-pct    { font-size: 10px; opacity: .75; }
 .legend-item-zero .legend-label { color: var(--text3); }
 .legend-item-zero .legend-count { opacity: .5; }
+
+/* ── Chart card header + chart-type dropdown menu ── */
+.chart-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.chart-type-picker { position: relative; flex-shrink: 0; }
+.chart-type-btn {
+  display: flex; align-items: center; gap: 4px;
+  border: 1px solid var(--line); background: var(--white); border-radius: 99px;
+  height: 26px; padding: 0 9px 0 8px; font-size: 13px; line-height: 1;
+  cursor: pointer; transition: all .15s; color: var(--text2); font-family: inherit;
+}
+.chart-type-btn:hover { border-color: var(--royal); color: var(--royal); }
+.chart-type-btn .caret { font-size: 8px; opacity: .6; margin-left: 1px; }
+.chart-type-btn.menu-open { border-color: var(--royal); background: rgba(26,86,160,.08); color: var(--royal); }
+.chart-type-menu {
+  position: absolute; top: 32px; right: 0; z-index: 10;
+  background: var(--white); border: 1px solid var(--line); border-radius: var(--r2);
+  box-shadow: var(--sh2); padding: 4px; min-width: 132px;
+  display: none; flex-direction: column; gap: 1px;
+}
+.chart-type-menu.open { display: flex; }
+.chart-type-opt {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px;
+  font-size: 12px; color: var(--text2); cursor: pointer; background: none; border: none;
+  text-align: left; width: 100%; font-family: inherit;
+}
+.chart-type-opt:hover { background: var(--slate); }
+.chart-type-opt.active { background: rgba(26,86,160,.1); color: var(--royal); font-weight: 700; }
+.chart-type-opt .opt-icon { font-size: 13px; width: 16px; text-align: center; }
+.chart-type-opt .opt-check { margin-left: auto; font-size: 11px; opacity: 0; }
+.chart-type-opt.active .opt-check { opacity: 1; }
+
+/* ── Categorical chart, bar-mode ── */
+.cat-bar-list  { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.cat-bar-row   { display: flex; align-items: center; gap: 8px; }
+.cat-bar-label { width: 130px; font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.cat-bar-track { flex: 1; height: 14px; background: var(--slate2); border-radius: 6px; overflow: hidden; }
+.cat-bar-fill  { height: 100%; border-radius: 6px; transition: width .4s ease; }
+.cat-bar-count { font-size: 11px; color: var(--text3); white-space: nowrap; flex-shrink: 0; }
+
+/* ── Categorical chart, table-mode ── */
+.cat-table { width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 12px; }
+.cat-table td { padding: 6px 4px; border-bottom: 1px solid var(--slate2); }
+.cat-table td.t-label { color: var(--text2); }
+.cat-table td.t-count { color: var(--navy); font-weight: 700; text-align: right; width: 46px; }
+.cat-table td.t-pct   { color: var(--text3); text-align: right; width: 52px; }
+.cat-table tr:last-child td { border-bottom: none; }
 
 /* ── Avg Score Bar ── */
 .chart-q-text { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 3px; line-height: 1.4; }

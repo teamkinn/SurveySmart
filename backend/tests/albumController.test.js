@@ -58,6 +58,52 @@ test('create — an unrecognized color falls back to the default instead of stor
   assert.equal(res.statusCode, 201);
 });
 
+test('create — accepts any valid 6-digit hex color, not just the old fixed presets (custom color picker)', async () => {
+  const originalQuery = db.query;
+  let insertedColor;
+  db.query = async (sql, params) => {
+    insertedColor = params[2];
+    return [{ insertId: 44 }];
+  };
+  const req = { user: { id: 1 }, body: { name: 'สีกำหนดเอง', color: '#4ADE80' } };
+  const res = mockRes();
+  await ctrl.create(req, res);
+  db.query = originalQuery;
+
+  assert.equal(insertedColor, '#4ADE80');
+  assert.equal(res.statusCode, 201);
+});
+
+test('create — a lowercase hex color (native <input type="color"> output) is normalized to uppercase', async () => {
+  const originalQuery = db.query;
+  let insertedColor;
+  db.query = async (sql, params) => {
+    insertedColor = params[2];
+    return [{ insertId: 45 }];
+  };
+  const req = { user: { id: 1 }, body: { name: 'สีกำหนดเอง', color: '#4ade80' } };
+  const res = mockRes();
+  await ctrl.create(req, res);
+  db.query = originalQuery;
+
+  assert.equal(insertedColor, '#4ADE80');
+});
+
+test('create — a 3-digit hex shorthand (not the exact "#"+6-hex-digit shape) falls back to the default', async () => {
+  const originalQuery = db.query;
+  let insertedColor;
+  db.query = async (sql, params) => {
+    insertedColor = params[2];
+    return [{ insertId: 46 }];
+  };
+  const req = { user: { id: 1 }, body: { name: 'สีสั้นเกินไป', color: '#fff' } };
+  const res = mockRes();
+  await ctrl.create(req, res);
+  db.query = originalQuery;
+
+  assert.equal(insertedColor, '#1A56A0');
+});
+
 test('create — a non-string name (e.g. a number) is safely coerced instead of crashing with a 500 (regression test)', async () => {
   const originalQuery = db.query;
   db.query = async () => [{ insertId: 50 }];

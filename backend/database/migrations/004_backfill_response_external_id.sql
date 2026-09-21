@@ -1,0 +1,22 @@
+-- Backfills responses.external_id = its own id for every existing row that
+-- doesn't have one yet. 002_response_external_id.sql added the column but
+-- left it NULL for every response that existed before this migration, and
+-- responseController.submit / publicResponseController.submitFromGoogleForm
+-- only started self-assigning external_id = their own id going forward (see
+-- the comments at those INSERT INTO responses call sites) after this was
+-- written — older rows never got one.
+--
+-- Why this matters: Export CSV (frontend/src/composables/useCsv.js
+-- buildResponseExportRows) writes each response's own id into the CSV's
+-- "id" column, and re-importing that file is only recognized as a duplicate
+-- of an existing response when its external_id already matches. A response
+-- with external_id still NULL can never match on the first re-import
+-- (MySQL treats every NULL as distinct from every other NULL), so it would
+-- insert as a brand-new duplicate instead of being skipped — this backfill
+-- closes that gap for data that predates the self-assign fix.
+--
+-- Safe to run unconditionally and more than once: ids are AUTO_INCREMENT and
+-- globally unique across the whole table, so backfilling every row to its
+-- own id can never collide with anything, and uq_survey_external_id
+-- (survey_id, external_id) is scoped per survey anyway.
+UPDATE responses SET external_id = id WHERE external_id IS NULL;

@@ -12,6 +12,7 @@ const {
   removeTokens,
 } = require('../services/googleAuth');
 const { pullFormResponses } = require('../services/googleFormsSync');
+const { encrypt } = require('../utils/credentialCrypto');
 
 router.use(auth);
 
@@ -216,18 +217,23 @@ router.post('/import-form', async (req, res) => {
     }
 
     let responseCount = 0;
+    let responseFetchFailed = false;
     try {
       const result = await pullFormResponses(forms, formId, surveyId);
       responseCount = result.synced;
     } catch (respErr) {
       console.warn('Could not fetch Google Form responses:', respErr.message);
+      // Surfaced to the client below instead of only logged — a silent
+      // responseCount: 0 here is indistinguishable from "this form genuinely
+      // has no responses yet", so a real fetch failure went unnoticed.
+      responseFetchFailed = true;
     }
 
     // Persist the refresh token (if Google issued one) so the background
     // poller can pick up new responses automatically from here on.
     if (tokens.refresh_token) {
       await db.query('UPDATE surveys SET google_refresh_token = ?, last_synced_at = NOW() WHERE id = ?', [
-        tokens.refresh_token,
+        encrypt(tokens.refresh_token),
         surveyId,
       ]);
     }
@@ -238,6 +244,7 @@ router.post('/import-form', async (req, res) => {
       title: form.info?.title || 'Imported Survey',
       questionCount: Object.keys(qIdMap).length,
       responseCount,
+      responseFetchFailed,
     });
   } catch (e) {
     console.error('Google Forms import error:', e.message);
@@ -298,7 +305,7 @@ router.post('/sync-responses', async (req, res) => {
     // poller can keep pulling new responses without another manual sync.
     if (tokens.refresh_token) {
       await db.query('UPDATE surveys SET google_refresh_token = ? WHERE id = ?', [
-        tokens.refresh_token,
+        encrypt(tokens.refresh_token),
         surveyId,
       ]);
     }
@@ -308,6 +315,19 @@ router.post('/sync-responses', async (req, res) => {
     res.json({ ok: true, synced, skipped });
   } catch (e) {
     console.error('Google Forms sync error:', e.message);
+    // Same invalid_grant handling as the background poller
+    // (services/formSyncPoller.js) — without this, a revoked/expired
+    // refresh token left auto_sync_enabled stuck true and every future
+    // manual "sync now" kept failing the same way until the poller's own
+    // (up to ~15 min later) pass happened to clean it up.
+    const reason = e.response?.data?.error || e.code;
+    if (reason === 'invalid_grant') {
+      try {
+        await db.query('UPDATE surveys SET google_refresh_token = NULL WHERE id = ?', [surveyId]);
+      } catch (cleanupErr) {
+        console.error('Google Forms sync — token cleanup failed:', cleanupErr.message);
+      }
+    }
     if (e.code === 403 || e.status === 403) {
       return res.status(403).json({
         message: 'ไม่มีสิทธิ์เข้าถึง Google Form นี้ — ตรวจสอบว่าคุณเป็นเจ้าของฟอร์ม',

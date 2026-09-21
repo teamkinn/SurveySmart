@@ -295,7 +295,9 @@ onMounted(() => surveyStore.fetchAll());
 .draggable-card.dragging { opacity: .4; }
 .drag-handle { color: var(--text3); font-size: 11px; letter-spacing: 1px; }
 
-.album-tag { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text3); margin-bottom: 8px; }
-.album-tag-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.album-tag-none .album-tag-dot { background: var(--line); }
+/* .album-tag/.album-tag-dot/.album-tag-none base rules now live in
+   main.css (shared with SurveyCard.vue) — this view just adds its own
+   block-level spacing since here the tag sits below the title, not in the
+   card header row. */
+.album-tag { margin-bottom: 8px; }
 </style>

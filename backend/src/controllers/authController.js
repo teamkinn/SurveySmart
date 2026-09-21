@@ -47,10 +47,22 @@ exports.register = async (req, res) => {
       return res.status(409).json({ message: 'อีเมลหรือชื่อผู้ใช้นี้มีอยู่แล้ว' });
 
     const hash = await bcrypt.hash(password, 10);
-    const [result] = await db.query(
-      'INSERT INTO users (username, email, password, first_name, last_name) VALUES (?,?,?,?,?)',
-      [username, email, hash, first_name || '', last_name || '']
-    );
+    let result;
+    try {
+      [result] = await db.query(
+        'INSERT INTO users (username, email, password, first_name, last_name) VALUES (?,?,?,?,?)',
+        [username, email, hash, first_name || '', last_name || '']
+      );
+    } catch (e) {
+      // The SELECT above and this INSERT aren't atomic — two concurrent
+      // registrations with the same username/email can both pass the
+      // pre-check and race here. Without this, the second one fell through
+      // to the generic 500 handler below instead of the intended 409.
+      if (e.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ message: 'อีเมลหรือชื่อผู้ใช้นี้มีอยู่แล้ว' });
+      }
+      throw e;
+    }
     const user = {
       id: result.insertId,
       username,
@@ -108,6 +120,13 @@ exports.login = async (req, res) => {
   }
 };
 
+// 6-digit numeric OTP (000000–999999, zero-padded so every code is exactly
+// 6 characters). crypto.randomInt is cryptographically strong, unlike
+// Math.random() — this is a credential, not a UI id.
+function generateOtp() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+}
+
 exports.forgot = async (req, res) => {
   try {
     const { email } = req.body;
@@ -115,53 +134,134 @@ exports.forgot = async (req, res) => {
 
     const [rows] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
     // Always respond the same way to prevent email enumeration
-    if (!rows.length) return res.json({ message: 'หากอีเมลนี้มีในระบบ คุณจะได้รับลิงก์รีเซตรหัสผ่าน' });
+    if (!rows.length) return res.json({ message: 'หากอีเมลนี้มีในระบบ คุณจะได้รับรหัสยืนยันสำหรับรีเซตรหัสผ่าน' });
 
-    const token = crypto.randomBytes(32).toString('hex');
-    const expires = new Date(Date.now() + 60 * 60 * 1000);
-    await db.query(
-      'INSERT INTO password_resets (user_id, token, expires_at) VALUES (?,?,?)',
-      [rows[0].id, token, expires]
-    );
+    // Any earlier, still-unused OTP for this user becomes stale the moment a
+    // new one is issued — otherwise a user who requests a second code could
+    // still redeem the first, older one too.
+    await db.query('UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0', [rows[0].id]);
 
-    const resetUrl = `${process.env.CLIENT_ORIGIN || 'http://localhost:5173'}/reset-password?token=${token}`;
+    const expires = new Date(Date.now() + 15 * 60 * 1000);
+    let code;
+    // The token column has a UNIQUE constraint; a 6-digit code is drawn from
+    // a much smaller space than the old 32-byte hex token, so a collision
+    // with another still-active code (different user) is unlikely but no
+    // longer negligible — retry a few times instead of 500ing on it.
+    for (let attempt = 0; ; attempt++) {
+      code = generateOtp();
+      try {
+        await db.query(
+          'INSERT INTO password_resets (user_id, token, expires_at) VALUES (?,?,?)',
+          [rows[0].id, code, expires]
+        );
+        break;
+      } catch (e) {
+        if (e.code === 'ER_DUP_ENTRY' && attempt < 4) continue;
+        throw e;
+      }
+    }
+
     const transport = makeTransport();
     if (transport) {
       await transport.sendMail({
         from: process.env.MAIL_FROM || process.env.MAIL_USER,
         to:   email,
-        subject: 'รีเซตรหัสผ่าน SurveySmart',
-        html: `<p>คลิกลิงก์ด้านล่างเพื่อรีเซตรหัสผ่านของคุณ (หมดอายุใน 1 ชั่วโมง)</p>
-               <p><a href="${resetUrl}">${resetUrl}</a></p>
+        subject: 'รหัสยืนยันรีเซตรหัสผ่าน SurveySmart',
+        html: `<p>รหัสยืนยันสำหรับรีเซตรหัสผ่านของคุณคือ</p>
+               <p style="font-size:28px;font-weight:700;letter-spacing:6px;">${code}</p>
+               <p>รหัสนี้จะหมดอายุใน 15 นาที</p>
                <p>หากคุณไม่ได้ขอรีเซต ไม่ต้องทำอะไร</p>`,
       });
+    } else {
+      // No SMTP configured (e.g. local dev without MAIL_HOST set) — the OTP
+      // would otherwise vanish with no way to complete the flow. This never
+      // goes in the HTTP response (that would let anyone read another
+      // user's OTP just by knowing their email), only the server's own log.
+      console.log(`[dev] ไม่ได้ตั้งค่า MAIL_HOST — รหัสยืนยันรีเซตรหัสผ่านสำหรับ ${email} คือ ${code} (หมดอายุใน 15 นาที)`);
     }
-    // Never return the resetUrl to the caller — even in dev mode
-    res.json({ message: 'หากอีเมลนี้มีในระบบ คุณจะได้รับลิงก์รีเซตรหัสผ่าน' });
+    // Never return the code to the caller — even in dev mode
+    res.json({ message: 'หากอีเมลนี้มีในระบบ คุณจะได้รับรหัสยืนยันสำหรับรีเซตรหัสผ่าน' });
   } catch (err) {
     console.error('forgot error:', err.message);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
   }
 };
 
+// Shared by /verify-reset-code and /reset-password so the two endpoints
+// agree on exactly what counts as a valid, live code. Does NOT mark the
+// code used — /verify-reset-code only checks, /reset-password is what
+// actually consumes it once the new password is set.
+async function findValidReset(email, code) {
+  const [userRows] = await db.query('SELECT id FROM users WHERE email = ?', [email]);
+  if (!userRows.length) return null;
+  const userId = userRows[0].id;
+
+  const [rows] = await db.query(
+    'SELECT * FROM password_resets WHERE user_id = ? AND token = ? AND used = 0 AND expires_at > NOW()',
+    [userId, code]
+  );
+  if (!rows.length) return null;
+  return { userId };
+}
+
+// Lets the UI confirm the OTP before showing the new-password fields,
+// without spending the code yet — the code is still required again (and
+// actually consumed) at /reset-password, so this step is a UX check, not a
+// second factor of trust on its own.
+exports.verifyResetCode = async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) return res.status(400).json({ message: 'ข้อมูลไม่ครบ' });
+
+    // Same generic invalid-code message whether the email doesn't exist or
+    // the code itself is wrong/expired — otherwise this endpoint becomes a
+    // way to enumerate which emails have an account.
+    const invalidCode = () => res.status(400).json({ message: 'รหัสไม่ถูกต้องหรือหมดอายุ' });
+
+    const match = await findValidReset(email, code);
+    if (!match) return invalidCode();
+
+    res.json({ valid: true });
+  } catch (err) {
+    console.error('verifyResetCode error:', err.message);
+    res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
+  }
+};
+
 exports.resetPassword = async (req, res) => {
   try {
-    const { token, password } = req.body;
-    if (!token || !password) return res.status(400).json({ message: 'ข้อมูลไม่ครบ' });
+    const { email, code, password } = req.body;
+    if (!email || !code || !password) return res.status(400).json({ message: 'ข้อมูลไม่ครบ' });
     if (password.length < 8) return res.status(400).json({ message: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร' });
     if (password.length > 128) return res.status(400).json({ message: 'รหัสผ่านต้องไม่เกิน 128 ตัวอักษร' });
 
-    const [rows] = await db.query(
-      'SELECT * FROM password_resets WHERE token = ? AND used = 0 AND expires_at > NOW()',
-      [token]
-    );
-    if (!rows.length) return res.status(400).json({ message: 'ลิงก์หมดอายุหรือใช้ไปแล้ว' });
+    // Same generic invalid-code message whether the email doesn't exist or
+    // the code itself is wrong/expired — otherwise this endpoint becomes a
+    // second way (besides /forgot-password already guarding against it) to
+    // enumerate which emails have an account.
+    const invalidCode = () => res.status(400).json({ message: 'รหัสไม่ถูกต้องหรือหมดอายุ' });
+
+    const match = await findValidReset(email, code);
+    if (!match) return invalidCode();
+    const { userId } = match;
 
     const hash = await bcrypt.hash(password, 10);
-    await db.query('UPDATE users SET password = ? WHERE id = ?', [hash, rows[0].user_id]);
-    await db.query('UPDATE password_resets SET used = 1 WHERE id = ?', [rows[0].id]);
+    // password_changed_at lets the auth middleware reject any JWT issued
+    // before this moment — otherwise a token that leaked before the reset
+    // (or a session left open on another device) would keep working until
+    // it naturally expired instead of being cut off right here.
+    await db.query(
+      'UPDATE users SET password = ?, password_changed_at = NOW() WHERE id = ?',
+      [hash, userId]
+    );
+    // Invalidate every other still-valid, unused code for this user too —
+    // not just this one. Without this, an earlier forgot-password request
+    // that issued a code which hasn't expired yet stayed usable right up
+    // until its own 15-minute expiry, even after the password had already
+    // been changed via a different (newer) code.
+    await db.query('UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0', [userId]);
 
-    // Purge old/used reset tokens to keep table clean
+    // Purge old/used reset codes to keep table clean
     await db.query('DELETE FROM password_resets WHERE expires_at < NOW() OR used = 1');
 
     res.json({ message: 'รีเซตรหัสผ่านเรียบร้อยแล้ว' });

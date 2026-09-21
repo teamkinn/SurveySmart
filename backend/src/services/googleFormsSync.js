@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { resolveChoiceScore } = require('../utils/likertScore');
 
 function parseJsonSafe(v) {
   if (!v) return null;
@@ -47,13 +48,14 @@ function extractResponseAnswers(resp, qIdMap) {
       answerText = values[0] || null;
       if (['radio', 'dropdown'].includes(qInfo.type)) {
         answerJson = JSON.stringify({ value: answerText });
-        const m = (answerText || '').match(/\((\d+(?:\.\d+)?)\)\s*$/);
-        if (m) {
-          score = parseFloat(m[1]);
-        } else if (Array.isArray(qInfo.options) && qInfo.options.length > 1) {
-          const idx = qInfo.options.indexOf(answerText);
-          if (idx !== -1) score = idx + 1;
-        }
+        // Score comes from an explicit "(n)" suffix or the shared Thai
+        // Likert label dictionary — NEVER from this option's position in
+        // qInfo.options. Google Forms multiple-choice options are very
+        // commonly laid out best-first ("มากที่สุด, มาก, ..., น้อยที่สุด"),
+        // which a position-based guess (index 0 -> score 1) would silently
+        // invert. See utils/likertScore.js for the incident that motivated
+        // this. An unrecognized label is simply left unscored.
+        score = resolveChoiceScore(answerText);
       }
     }
     grouped[qInfo.localId] = { isGrid: false, answerText, answerJson, score };
@@ -69,10 +71,13 @@ function extractResponseAnswers(resp, qIdMap) {
         .join('; ');
       let score = null;
       if (g.type === 'mcgrid' && Array.isArray(g.cols) && g.cols.length > 1) {
+        // Column label -> score via the same Thai Likert dictionary used
+        // above — not the column's position in g.cols, for the same
+        // best-first-ordering reason (see the radio/dropdown branch above
+        // and utils/likertScore.js).
         const rowScores = rowEntries
-          .map(([, v]) => g.cols.indexOf(v))
-          .filter(i => i !== -1)
-          .map(i => i + 1);
+          .map(([, v]) => resolveChoiceScore(v))
+          .filter(s => s != null);
         if (rowScores.length) score = rowScores.reduce((a, b) => a + b, 0) / rowScores.length;
       }
       finalAnswers.push({ localId: Number(localId), answerText, answerJson, score });
@@ -211,12 +216,22 @@ async function pullFormResponses(forms, formId, surveyId) {
   for (const resp of respData.responses || []) {
     if (!resp.responseId) continue;
 
+    // Each Google Form response becomes two writes (responses +
+    // response_answers) that must land together — without a transaction, a
+    // failure on the second insert left a responses row with zero answers
+    // permanently orphaned: the next sync's dedup check
+    // (WHERE google_response_id = ?) finds that row and skips the response
+    // forever, since as far as it can tell that response was already synced.
+    const conn = await db.getConnection();
     try {
-      const [existing] = await db.query(
+      await conn.beginTransaction();
+
+      const [existing] = await conn.query(
         'SELECT id FROM responses WHERE survey_id = ? AND google_response_id = ?',
         [surveyId, resp.responseId]
       );
       if (existing.length) {
+        await conn.rollback();
         skipped++;
         continue;
       }
@@ -226,7 +241,7 @@ async function pullFormResponses(forms, formId, surveyId) {
       const nameAnswer = nameQuestion ? finalAnswers.find(a => a.localId === nameQuestion.id) : null;
       const respondentName = nameAnswer?.answerText?.trim() || resp.respondentEmail || 'Google Forms';
 
-      const [rResult] = await db.query(
+      const [rResult] = await conn.query(
         'INSERT INTO responses (survey_id, respondent_name, overall_score, submitted_at, google_response_id) VALUES (?,?,?,?,?)',
         [
           surveyId,
@@ -240,13 +255,16 @@ async function pullFormResponses(forms, formId, surveyId) {
 
       const vals = finalAnswers.map(a => [responseId, a.localId, a.answerText, a.answerJson, a.score]);
       if (vals.length) {
-        await db.query(
+        await conn.query(
           'INSERT INTO response_answers (response_id, question_id, answer_text, answer_json, score) VALUES ?',
           [vals]
         );
       }
+
+      await conn.commit();
       synced++;
     } catch (e) {
+      await conn.rollback();
       // A duplicate google_response_id here means another sync inserted it
       // concurrently between our SELECT and INSERT — treat as already-synced
       // rather than failing the whole batch.
@@ -255,6 +273,8 @@ async function pullFormResponses(forms, formId, surveyId) {
       } else {
         console.error(`pullFormResponses: response ${resp.responseId} failed:`, e.message);
       }
+    } finally {
+      conn.release();
     }
   }
 

@@ -395,7 +395,16 @@ function open() {
   currentStep.value = 1;
   isOpen.value = true;
 }
-function close() { isOpen.value = false; }
+function close() {
+  // Without this, closing via ✕ while a Google auth popup is in flight left
+  // it running — if the user then reopened this modal for a different
+  // survey (open() resets form/sec1/sec2/sec3), a late-resolving popup would
+  // go on to create/submit a Google Form using whatever's in those refs by
+  // the time it resolves, not what was open when the flow started.
+  activeAuthPopup?.cancel();
+  activeAuthPopup = null;
+  isOpen.value = false;
+}
 
 function dotClass(step) {
   if (step < currentStep.value) return 'done';

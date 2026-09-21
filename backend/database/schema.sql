@@ -23,6 +23,11 @@ CREATE TABLE users (
   is_active    TINYINT(1)      DEFAULT 1,
   created_at   TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
   updated_at   TIMESTAMP       DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  -- Set whenever the password is changed (currently: password-reset flow).
+  -- auth middleware rejects any JWT issued before this timestamp, so a
+  -- token that leaked before a reset stops working immediately instead of
+  -- staying valid until it naturally expires (see migrations/005).
+  password_changed_at TIMESTAMP NULL DEFAULT NULL,
 
   PRIMARY KEY (id),
   UNIQUE KEY uq_username (username),
@@ -87,11 +92,17 @@ CREATE TABLE surveys (
 
   PRIMARY KEY (id),
   KEY idx_user_status    (user_id, status),
-  KEY idx_share_token    (share_token),
   KEY idx_album          (album_id),
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_surveys_album_id FOREIGN KEY (album_id) REFERENCES survey_albums(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
+-- Note: no separate idx_share_token index — the inline UNIQUE on
+-- share_token above already creates one; a second explicit KEY on the same
+-- single column was a redundant duplicate index (wasted write overhead/
+-- storage, no query it served that the UNIQUE index didn't already serve).
+-- The old migrations/000_google_forms_columns.sql migration path never
+-- created that second index either, so this also removes a drift between
+-- a fresh schema.sql install and a database migrated up from scratch.
 
 -- ─────────────────────────────────────────────
 --  5. QUESTIONS

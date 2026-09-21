@@ -2,7 +2,7 @@
   <div class="im-overlay" :class="{ open: isOpen }">
     <div class="im-modal">
       <div class="modal-header">
-        <h2>📄 นำเข้าคำตอบจาก CSV</h2>
+        <h2>📄 นำเข้าคำตอบจาก CSV / Excel</h2>
         <button class="modal-close" @click="close">✕</button>
       </div>
 
@@ -10,11 +10,11 @@
 
         <!-- Input phase -->
         <template v-if="phase === 'input'">
-          <p class="im-desc">อัปโหลดไฟล์ CSV ของคำตอบ (เช่น ข้อมูลที่เก็บด้วยกระดาษ หรือเครื่องมืออื่น) เพื่อเพิ่มเข้าแบบสอบถามนี้</p>
+          <p class="im-desc">อัปโหลดไฟล์ CSV หรือ Excel (.xlsx) ของคำตอบ (เช่น ข้อมูลที่เก็บด้วยกระดาษ หรือเครื่องมืออื่น) เพื่อเพิ่มเข้าแบบสอบถามนี้</p>
 
           <div class="im-field">
-            <label class="im-label">ไฟล์ CSV *</label>
-            <input ref="fileInput" type="file" accept=".csv,text/csv" class="im-file" @change="onFile" />
+            <label class="im-label">ไฟล์ CSV หรือ Excel (.xlsx) *</label>
+            <input ref="fileInput" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="im-file" @change="onFile" />
           </div>
 
           <div class="im-note">
@@ -76,6 +76,9 @@
             <p v-if="result.matchedColumns < result.totalQuestions" class="im-status-sub" style="margin-top:8px;">
               ⚠️ มีคำถามบางข้อที่ไม่พบคอลัมน์ที่ตรงกัน — ตรวจสอบหัวคอลัมน์ในไฟล์ CSV
             </p>
+            <p v-if="result.unscoredChoiceCells" class="im-status-sub" style="margin-top:8px;">
+              ⚠️ มีคำตอบแบบเลือกตัวเลือก {{ result.unscoredChoiceCells }} ช่องที่ระบบแปลงเป็นคะแนนไม่ได้ (ข้อความตัวเลือกไม่ตรงกับรูปแบบที่รู้จัก) — คำตอบเหล่านี้ถูกนำเข้าแล้วแต่ไม่ถูกนับในคะแนนเฉลี่ย ตรวจสอบข้อความตัวเลือกในคำถามที่เกี่ยวข้อง
+            </p>
           </div>
         </template>
 
@@ -110,7 +113,7 @@
 <script setup>
 import { ref, computed, inject } from 'vue';
 import api from '@/api';
-import { parseCSV } from '@/composables/useCsv';
+import { readSpreadsheetFile } from '@/composables/useCsv';
 
 const props = defineProps({ surveyId: { type: [String, Number], required: true } });
 const emit = defineEmits(['imported']);
@@ -122,12 +125,21 @@ const errorMsg = ref('');
 const parseError = ref('');
 const parsedHeaders = ref(0);
 const parsedRows = ref(0);
-const result = ref({ imported: 0, duplicates: 0, skipped: 0, matchedColumns: 0, totalQuestions: 0 });
+const result = ref({ imported: 0, duplicates: 0, skipped: 0, matchedColumns: 0, totalQuestions: 0, unscoredChoiceCells: 0 });
 
-let headers = [];
-let rows = [];
+// Must be refs, not plain `let` — canSubmit below is a computed(), and Vue
+// only re-evaluates a computed when a *reactive* dependency it read changes.
+// With plain variables, canSubmit's only real dependency was parseError.value;
+// after a successful parse, parseError is set to '' (a no-op re-trigger)
+// BEFORE headers/rows get populated and is never touched again, so the
+// computed's cached result froze at `false` from that early evaluation —
+// the button stayed disabled forever even with a valid file loaded, so
+// clicking it did nothing (regression found 2026-08-11: "นำเข้าคำตอบ CSV"
+// silently not submitting).
+const headers = ref([]);
+const rows = ref([]);
 
-const canSubmit = computed(() => rows.length > 0 && !parseError.value);
+const canSubmit = computed(() => rows.value.length > 0 && !parseError.value);
 
 function open() {
   phase.value = 'input';
@@ -135,8 +147,8 @@ function open() {
   parseError.value = '';
   parsedHeaders.value = 0;
   parsedRows.value = 0;
-  headers = [];
-  rows = [];
+  headers.value = [];
+  rows.value = [];
   isOpen.value = true;
 }
 
@@ -147,44 +159,39 @@ function closeAndGo() {
   emit('imported');
 }
 
-function onFile(e) {
+async function onFile(e) {
   const file = e.target.files?.[0];
   parseError.value = '';
   parsedHeaders.value = 0;
   parsedRows.value = 0;
-  headers = [];
-  rows = [];
+  headers.value = [];
+  rows.value = [];
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const parsed = parseCSV(String(reader.result));
-      if (!parsed.headers.length || !parsed.rows.length) {
-        parseError.value = 'ไม่พบข้อมูลในไฟล์ CSV';
-        return;
-      }
-      if (parsed.rows.length > 5000) {
-        parseError.value = `ไฟล์มี ${parsed.rows.length} แถว — นำเข้าได้สูงสุด 5,000 แถวต่อครั้ง`;
-        return;
-      }
-      headers = parsed.headers;
-      rows = parsed.rows;
-      parsedHeaders.value = headers.length;
-      parsedRows.value = rows.length;
-    } catch {
-      parseError.value = 'ไม่สามารถอ่านไฟล์ CSV นี้ได้';
+  try {
+    const parsed = await readSpreadsheetFile(file);
+    if (!parsed.headers.length || !parsed.rows.length) {
+      parseError.value = 'ไม่พบข้อมูลในไฟล์';
+      return;
     }
-  };
-  reader.onerror = () => { parseError.value = 'ไม่สามารถอ่านไฟล์นี้ได้'; };
-  reader.readAsText(file, 'utf-8');
+    if (parsed.rows.length > 5000) {
+      parseError.value = `ไฟล์มี ${parsed.rows.length} แถว — นำเข้าได้สูงสุด 5,000 แถวต่อครั้ง`;
+      return;
+    }
+    headers.value = parsed.headers;
+    rows.value = parsed.rows;
+    parsedHeaders.value = headers.value.length;
+    parsedRows.value = rows.value.length;
+  } catch (err) {
+    parseError.value = err?.message || 'ไม่สามารถอ่านไฟล์นี้ได้';
+  }
 }
 
 async function doImport() {
   if (!canSubmit.value) return;
   phase.value = 'importing';
   try {
-    const { data } = await api.post(`/surveys/${props.surveyId}/responses/import-csv`, { headers, rows });
+    const { data } = await api.post(`/surveys/${props.surveyId}/responses/import-csv`, { headers: headers.value, rows: rows.value });
     result.value = data;
     phase.value = 'done';
     showToast?.(

@@ -1,8 +1,14 @@
 <template>
-  <div style="display:flex;flex-direction:column;min-height:100vh;">
+  <!-- height:100vh + overflow:hidden pins this shell to exactly one viewport,
+       so .main-content (flex:1; overflow-y:auto in main.css) is unambiguously
+       the only scrollable region — header/top-nav stay put and never
+       themselves need to scroll. With the old min-height:100vh, this box grew
+       past the viewport on tall tabs and the *document* became the scroll
+       owner instead, flip-flopping per tab/content length. -->
+  <div style="display:flex;flex-direction:column;height:100vh;overflow:hidden;">
     <!-- TOP HEADER -->
     <div class="top-header">
-      <div class="top-header-brand">
+      <div class="top-header-brand" style="cursor:pointer;" @click="goHome">
         <div class="brand-icon">📋</div>
         <div class="brand-name">แบบสอบถามออนไลน์</div>
         <div class="brand-sep"></div>
@@ -22,14 +28,14 @@
     <!-- NAV BAR -->
     <div class="top-nav">
       <div class="top-nav-left">
-        <RouterLink v-for="nav in navItems" :key="nav.to" :to="nav.to" custom v-slot="{ isActive, navigate }">
-          <button class="top-nav-item" :class="{ active: isActive }" @click="navigate">
+        <RouterLink v-for="nav in navItems" :key="nav.to" :to="nav.to" custom v-slot="{ isActive, isExactActive, navigate }">
+          <button class="top-nav-item" :class="{ active: nav.to === '/' ? isExactActive : isActive }" @click="navigate">
             <span>{{ nav.icon }}</span> {{ nav.label }}
           </button>
         </RouterLink>
       </div>
       <div class="top-nav-right">
-        <button class="btn-import" @click="openImportCsv">⬇ นำเข้า CSV</button>
+        <button class="btn-import" @click="openImportCsv">⬇ นำเข้า CSV/Excel</button>
         <button class="btn-import" @click="openImport">⬇ นำเข้า Google Forms</button>
         <button class="btn-new" @click="openBuilder">＋ สร้างแบบสอบถาม</button>
       </div>
@@ -91,6 +97,10 @@ const fullName = computed(() => {
   if (!u) return '';
   return u.first_name ? `${u.first_name} ${u.last_name || ''}`.trim() : u.username;
 });
+
+function goHome() {
+  router.push('/');
+}
 
 function doLogout() {
   authStore.logout();

@@ -215,6 +215,9 @@ async function submit() {
     await api.post(`/surveys/${survey.value.id}/responses`, {
       respondent_name: respondentName.value.trim(),
       answers: buildAnswers(),
+      // Required server-side now — submitting only ever proves you actually
+      // opened this survey's own share link/QR, not just guessed its id.
+      share_token: route.params.token,
     });
     submitted.value = true;
   } catch (e) {

@@ -85,16 +85,25 @@ const sharedAll = ref(false);
 const togglingPublic = ref(false);
 
 let searchTimer = null;
+// clearTimeout only cancels a pending *debounce timer*, not an
+// already-in-flight request — without this counter, typing, pausing long
+// enough to fire a search, then typing again before it resolves could have
+// two searchUsers() calls in flight at once; whichever resolved last
+// overwrote `results` even if it was for an older/shorter query.
+let searchSeq = 0;
 watch(query, (q) => {
   clearTimeout(searchTimer);
   q = q.trim();
   if (q.length < 2) { results.value = []; return; }
   searchTimer = setTimeout(async () => {
+    const seq = ++searchSeq;
     searching.value = true;
     try {
-      results.value = await surveyStore.searchUsers(q);
+      const data = await surveyStore.searchUsers(q);
+      if (seq !== searchSeq) return; // a newer search started while this was in flight
+      results.value = data;
     } finally {
-      searching.value = false;
+      if (seq === searchSeq) searching.value = false;
     }
   }, 300);
 });
