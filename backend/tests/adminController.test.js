@@ -60,7 +60,14 @@ test('setRole — rejects changing your own role', async () => {
 test('setRole — updates another user\'s role to a valid value', async () => {
   const originalQuery = db.query;
   let params;
-  db.query = async (sql, p) => { params = p; return [{}]; };
+  let call = 0;
+  db.query = async (sql, p) => {
+    call++;
+    // 1st call: isHeadAdminAccount's own lookup of the target's current role.
+    if (call === 1) return [[{ role: 'user' }]];
+    params = p;
+    return [{}];
+  };
   const req = { user: { id: 5, role: 'head_admin' }, params: { id: '2' }, body: { role: 'admin' } };
   const res = mockRes();
   await ctrl.setRole(req, res);
@@ -68,6 +75,17 @@ test('setRole — updates another user\'s role to a valid value', async () => {
 
   assert.deepEqual(params, ['admin', '2']);
   assert.equal(res.statusCode, 200);
+});
+
+test('setRole — refuses to change another head_admin\'s role', async () => {
+  const originalQuery = db.query;
+  db.query = async () => [[{ role: 'head_admin' }]];
+  const req = { user: { id: 5, role: 'head_admin' }, params: { id: '2' }, body: { role: 'admin' } };
+  const res = mockRes();
+  await ctrl.setRole(req, res);
+  db.query = originalQuery;
+
+  assert.equal(res.statusCode, 403);
 });
 
 test('setStatus — rejects a non-boolean is_active value', async () => {
@@ -87,7 +105,13 @@ test('setStatus — rejects suspending your own account', async () => {
 test('setStatus — suspends another user\'s account (is_active: false -> 0)', async () => {
   const originalQuery = db.query;
   let params;
-  db.query = async (sql, p) => { params = p; return [{}]; };
+  let call = 0;
+  db.query = async (sql, p) => {
+    call++;
+    if (call === 1) return [[{ role: 'user' }]];
+    params = p;
+    return [{}];
+  };
   const req = { user: { id: 5, role: 'head_admin' }, params: { id: '2' }, body: { is_active: false } };
   const res = mockRes();
   await ctrl.setStatus(req, res);
@@ -97,10 +121,27 @@ test('setStatus — suspends another user\'s account (is_active: false -> 0)', a
   assert.equal(res.body.is_active, 0);
 });
 
+test('setStatus — refuses to suspend another head_admin\'s account', async () => {
+  const originalQuery = db.query;
+  db.query = async () => [[{ role: 'head_admin' }]];
+  const req = { user: { id: 5, role: 'head_admin' }, params: { id: '2' }, body: { is_active: false } };
+  const res = mockRes();
+  await ctrl.setStatus(req, res);
+  db.query = originalQuery;
+
+  assert.equal(res.statusCode, 403);
+});
+
 test('setStatus — re-activates another user\'s account (is_active: true -> 1)', async () => {
   const originalQuery = db.query;
   let params;
-  db.query = async (sql, p) => { params = p; return [{}]; };
+  let call = 0;
+  db.query = async (sql, p) => {
+    call++;
+    if (call === 1) return [[{ role: 'user' }]];
+    params = p;
+    return [{}];
+  };
   const req = { user: { id: 5, role: 'head_admin' }, params: { id: '2' }, body: { is_active: true } };
   const res = mockRes();
   await ctrl.setStatus(req, res);
@@ -120,7 +161,13 @@ test('deleteUser — rejects deleting your own account', async () => {
 test('deleteUser — deletes another user by id', async () => {
   const originalQuery = db.query;
   let params;
-  db.query = async (sql, p) => { params = p; return [{}]; };
+  let call = 0;
+  db.query = async (sql, p) => {
+    call++;
+    if (call === 1) return [[{ role: 'user' }]];
+    params = p;
+    return [{}];
+  };
   const req = { user: { id: 5, role: 'head_admin' }, params: { id: '2' } };
   const res = mockRes();
   await ctrl.deleteUser(req, res);
@@ -128,6 +175,17 @@ test('deleteUser — deletes another user by id', async () => {
 
   assert.deepEqual(params, ['2']);
   assert.equal(res.statusCode, 200);
+});
+
+test('deleteUser — refuses to delete another head_admin\'s account', async () => {
+  const originalQuery = db.query;
+  db.query = async () => [[{ role: 'head_admin' }]];
+  const req = { user: { id: 5, role: 'head_admin' }, params: { id: '2' } };
+  const res = mockRes();
+  await ctrl.deleteUser(req, res);
+  db.query = originalQuery;
+
+  assert.equal(res.statusCode, 403);
 });
 
 test('deleteNullResponses — deletes only responses with a NULL overall_score for the given survey', async () => {

@@ -140,24 +140,24 @@
             <div class="chart-q-text">{{ c.question_text }}</div>
             <div class="chart-q-meta">{{ c.total }} คำตอบ · {{ typeLabel(c.question_type) }}</div>
 
-            <div v-if="c.chartType === 'bar' && c.data.length" class="bar-chart">
-              <div v-for="item in c.data" :key="item.label" class="bar-row">
-                <div class="bar-label">{{ item.label }}</div>
-                <div class="bar-track">
-                  <div class="bar-fill" :style="{ width: c.total ? (item.count / c.total * 100) + '%' : '0%' }"></div>
+            <div v-if="c.chartType === 'bar' && c.data.length" class="qbar-chart">
+              <div v-for="item in c.data" :key="item.label" class="qbar-row">
+                <div class="qbar-label">{{ item.label }}</div>
+                <div class="qbar-track">
+                  <div class="qbar-fill" :style="{ width: c.total ? (item.count / c.total * 100) + '%' : '0%' }"></div>
                 </div>
-                <div class="bar-count">{{ item.count }}</div>
-                <div class="bar-pct">{{ c.total ? Math.round(item.count / c.total * 100) : 0 }}%</div>
+                <div class="qbar-count">{{ item.count }}</div>
+                <div class="qbar-pct">{{ c.total ? Math.round(item.count / c.total * 100) : 0 }}%</div>
               </div>
             </div>
 
-            <div v-else-if="c.chartType === 'score' && c.data.length" class="bar-chart">
-              <div v-for="item in c.data" :key="item.label" class="bar-row">
-                <div class="bar-label score-label">{{ item.label }}</div>
-                <div class="bar-track">
-                  <div class="bar-fill bar-fill-gold" :style="{ width: c.total ? (item.count / c.total * 100) + '%' : '0%' }"></div>
+            <div v-else-if="c.chartType === 'score' && c.data.length" class="qbar-chart">
+              <div v-for="item in c.data" :key="item.label" class="qbar-row">
+                <div class="qbar-label score-label">{{ item.label }}</div>
+                <div class="qbar-track">
+                  <div class="qbar-fill qbar-fill-gold" :style="{ width: c.total ? (item.count / c.total * 100) + '%' : '0%' }"></div>
                 </div>
-                <div class="bar-count">{{ item.count }}</div>
+                <div class="qbar-count">{{ item.count }}</div>
               </div>
             </div>
 
@@ -273,14 +273,45 @@ const avgScore = computed(() => {
   return isNaN(a) ? '—' : a.toFixed(2);
 });
 
+// Detects an open-feedback question ("ข้อเสนอแนะเพิ่มเติม", "ความคิดเห็น...",
+// etc.) by its QUESTION TEXT rather than its stored question_type — mirrors
+// ResponsesView.vue's isFeedbackQuestionText/isFeedbackChart. A CSV/Google
+// Forms import can misdetect a free-text "any comments?" column as a
+// 'radio'/'checkbox' categorical question whenever the sample answers only
+// have a handful of distinct values, which is exactly what a short,
+// blank-heavy comments column tends to look like. When that happens, this
+// keeps the question's real written answers out of the "รายคำถาม" qbar-chart
+// grid (where they'd render as a nonsensical distribution) and lets the
+// watch(selectedId) handler below fold them into ความคิดเห็นล่าสุด instead,
+// regardless of the question's stored type — so a mistyped question, now or
+// on any future survey, still gets treated as feedback rather than falling
+// through the cracks.
+const FEEDBACK_KEYWORDS = ['ข้อเสนอแนะ', 'เสนอแนะ', 'ความคิดเห็น', 'ความเห็น', 'comment', 'feedback'];
+function isFeedbackQuestionText(text) {
+  const t = (text || '').toLowerCase();
+  return FEEDBACK_KEYWORDS.some(k => t.includes(k.toLowerCase()));
+}
+// Excludes a genuine Likert rating question (isLikertScale, set by the
+// backend's chart-data endpoint) whose title merely happens to contain a
+// feedback keyword — e.g. "ระดับความคิดเห็นต่อ..." is a 5-point มาก/มากที่สุด
+// rating, not free text, and belongs in the รายคำถาม bar chart, not the
+// comments panel.
+function isFeedbackChart(chart) {
+  return isFeedbackQuestionText(chart.question_text) && !chart.isLikertScale;
+}
+
+// Charts shown in the "รายคำถาม" tab exclude feedback-style questions (see
+// isFeedbackChart above) — their answers belong in ความคิดเห็นล่าสุด instead.
+const nonFeedbackCharts = computed(() => charts.value.filter(c => !isFeedbackChart(c)));
+
 const filteredCharts = computed(() => {
   const q = questionSearch.value.trim().toLowerCase();
-  if (!q) return charts.value;
+  if (!q) return nonFeedbackCharts.value;
   // (c.question_text || '') — an orphaned/malformed question (e.g. one left
   // behind by a bad CSV import) with a null/undefined question_text would
   // otherwise throw here and take down the whole "รายคำถาม" tab instead of
   // just not matching the search.
-  return charts.value.filter(c => (c.question_text || '').toLowerCase().includes(q));
+  return nonFeedbackCharts.value.filter(c => (c.question_text || '').toLowerCase().includes(q));
 });
 
 const recentResponses = computed(() =>
@@ -388,12 +419,26 @@ watch(selectedId, async (id) => {
     // on by the time it resolves — writing this response now would show
     // data for a survey that isn't the one selected on screen anymore.
     if (selectedId.value !== id) return;
+    // Question ids this survey's chart-data identifies as open feedback by
+    // TEXT (see isFeedbackChart above) — used below as a fallback so a
+    // feedback question stored with the "wrong" question_type (e.g.
+    // mistakenly 'radio'/'checkbox' from a CSV/Forms import) still surfaces
+    // in ความคิดเห็นล่าสุด instead of only ever rendering as a bar chart.
+    const feedbackQuestionIds = new Set(
+      r2.data.filter(isFeedbackChart).map(c => c.question_id)
+    );
     responses.value = r1.data.map(r => {
       let answers = r.answers;
       if (typeof answers === 'string') { try { answers = JSON.parse(answers); } catch { answers = []; } }
       answers = Array.isArray(answers) ? answers.filter(a => a && a.question_id) : [];
-      const paraAns = answers.find(a => a.question_type === 'para' && a.answer_text);
-      return { ...r, answers, note: paraAns?.answer_text || null };
+      // Prefer a real 'para' (long free-text) answer, same as before; fall
+      // back to any answer belonging to a feedback-keyword question
+      // (feedbackQuestionIds) regardless of its stored type, so a mistyped
+      // "ข้อเสนอแนะ.../ความคิดเห็น..." question still shows up here.
+      const commentAns =
+        answers.find(a => a.question_type === 'para' && a.answer_text) ||
+        answers.find(a => feedbackQuestionIds.has(a.question_id) && a.answer_text);
+      return { ...r, answers, note: commentAns?.answer_text || null };
     });
     charts.value = r2.data;
   } catch (e) {
@@ -485,15 +530,15 @@ onMounted(() => surveyStore.fetchAll());
 .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
 .chart-q-text { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 3px; line-height: 1.4; }
 .chart-q-meta { font-size: 11px; color: var(--text3); margin-bottom: 12px; }
-.bar-chart { display: flex; flex-direction: column; gap: 8px; }
-.bar-row { display: flex; align-items: center; gap: 8px; }
-.bar-label { width: 130px; font-size: 12px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; text-align: right; }
+.qbar-chart { display: flex; flex-direction: column; gap: 8px; }
+.qbar-row { display: flex; align-items: center; gap: 8px; }
+.qbar-label { width: 130px; font-size: 12px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; text-align: right; }
 .score-label { width: 28px; text-align: center; font-weight: 700; }
-.bar-track { flex: 1; height: 18px; background: var(--slate2); border-radius: 9px; overflow: hidden; }
-.bar-fill { height: 100%; background: var(--royal); border-radius: 9px; transition: width .4s ease; min-width: 2px; }
-.bar-fill-gold { background: var(--gold); }
-.bar-count { width: 26px; font-size: 12px; color: var(--text2); text-align: right; flex-shrink: 0; }
-.bar-pct { width: 36px; font-size: 11px; color: var(--text3); flex-shrink: 0; }
+.qbar-track { flex: 1; height: 18px; background: var(--slate2); border-radius: 9px; overflow: hidden; }
+.qbar-fill { height: 100%; background: var(--royal); border-radius: 9px; transition: width .4s ease; min-width: 2px; }
+.qbar-fill-gold { background: var(--gold); }
+.qbar-count { width: 26px; font-size: 12px; color: var(--text2); text-align: right; flex-shrink: 0; }
+.qbar-pct { width: 36px; font-size: 11px; color: var(--text3); flex-shrink: 0; }
 .text-answers { display: flex; flex-direction: column; gap: 6px; }
 .text-bubble { background: var(--slate); border-radius: var(--r2); padding: 7px 10px; font-size: 13px; color: var(--text); border-left: 3px solid var(--royal2); }
 .text-empty { font-size: 13px; color: var(--text3); font-style: italic; }

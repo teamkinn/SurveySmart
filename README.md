@@ -99,10 +99,10 @@ Open **http://localhost:5173**
 ## Features
 
 - **Survey Builder** — multi-section wizard, 11 question types
-- **Dashboard** — donut charts, score breakdown, KPI cards, date/gender filter
+- **Dashboard** — donut charts, score breakdown, KPI cards, date/gender filter; open-feedback questions (detected by question text, e.g. ข้อเสนอแนะ / ความคิดเห็น) are routed to the "ความคิดเห็นล่าสุด" panel instead of the per-question charts, even if they were imported with the wrong type
 - **Response Management** — table view, CSV export
 - **Share** — view other users' surveys (read-only)
-- **Admin Panel** — manage users, promote/demote roles
+- **Admin Panel** — 3 roles (user / admin / head_admin); head_admin can promote/demote, suspend, or delete users — but never another head_admin
 - **Auth** — register, login, forgot/reset password, JWT sessions
 - **Google Forms** — link surveys to Google Forms, receive responses via webhook
 
@@ -130,8 +130,11 @@ Open **http://localhost:5173**
 | GET | `/api/surveys/:id/responses/chart-data` | ✅ | Chart data |
 | POST | `/api/responses/public/form/:formId` | — | Google Forms webhook |
 | GET | `/api/admin/users` | Admin | List all users |
-| PATCH | `/api/admin/users/:id/role` | Admin | Change user role |
-| DELETE | `/api/admin/users/:id` | Admin | Delete user |
+| GET | `/api/admin/surveys` | Admin | List all surveys |
+| PATCH | `/api/admin/users/:id/role` | Head Admin | Change user role (not self / other head_admin) |
+| PATCH | `/api/admin/users/:id/status` | Head Admin | Suspend / re-activate (not self / other head_admin) |
+| DELETE | `/api/admin/users/:id` | Head Admin | Delete user (not self / other head_admin) |
+| DELETE | `/api/admin/surveys/:surveyId/responses/nullscore` | Head Admin | Delete responses with NULL score |
 
 ---
 
@@ -139,7 +142,7 @@ Open **http://localhost:5173**
 
 | Table | Purpose |
 |---|---|
-| `users` | Accounts (role: user/admin) |
+| `users` | Accounts (role: user/admin/head_admin) |
 | `surveys` | Survey metadata |
 | `questions` | Questions with `options_json` |
 | `responses` | One row per submission |
@@ -148,3 +151,18 @@ Open **http://localhost:5173**
 | `password_resets` | Forgot password tokens |
 
 **Views:** `v_survey_summary` · `v_question_stats`
+
+---
+
+## Maintenance Scripts (backend)
+
+| Command | Purpose |
+|---|---|
+| `npm test` | Run the backend test suite (`node --test`) |
+| `npm run migrate` | Apply pending DB migrations |
+| `node scripts/fix-feedback-question-type.js [--survey <id>] [--apply]` | Reclassify feedback questions (ข้อเสนอแนะ / ความคิดเห็น) mistakenly stored as radio/checkbox/dropdown to `para`. Dry run by default; skips real Likert scales; never touches answers; safe to re-run |
+| `node scripts/fix-likert-scores.js` | Re-score Likert answers by label (not option position); safe to re-run |
+
+Root-level helpers (Windows): `update_github.bat` (add + commit + push) and `push_github.bat` (push existing commits only).
+
+User manual (Thai): `SurveySmart_คู่มือผู้ใช้งาน.docx` — last updated 23 Sep 2569.

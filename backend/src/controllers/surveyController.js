@@ -409,7 +409,13 @@ exports.stats = async (req, res) => {
     const [[resp]] = await db.query(
       `SELECT
          COALESCE(SUM(response_count),0)      AS total_responses,
-         ROUND(AVG(NULLIF(avg_score,0)),2)    AS overall_avg
+         -- AVG() already ignores NULL avg_score rows (a survey with zero
+         -- responses -- see v_survey_summary) on its own; wrapping it in
+         -- NULLIF(avg_score,0) additionally dropped any survey whose true
+         -- average score is exactly 0.00 from this org-wide average, which
+         -- is a real, reachable score (e.g. a 0-5 scale survey where every
+         -- response scored 0), not a stand-in for "no responses".
+         ROUND(AVG(avg_score),2)              AS overall_avg
        FROM v_survey_summary WHERE user_id = ?`,
       [userId]
     );
