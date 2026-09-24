@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { todayInBangkok, OPEN_BY_CLOSE_DATE_SQL } = require('../utils/bangkokDate');
 const { resolveChoiceScore } = require('../utils/likertScore');
 
 // Public, unauthenticated endpoint (called by the Apps Script webhook) —
@@ -21,8 +22,9 @@ exports.submitFromGoogleForm = async (req, res) => {
 
     // Find active survey by google_form_id
     const [[survey]] = await conn.query(
-      "SELECT id FROM surveys WHERE google_form_id = ? AND status = 'active'",
-      [formId]
+      `SELECT id FROM surveys
+       WHERE google_form_id = ? AND status = 'active' AND ${OPEN_BY_CLOSE_DATE_SQL}`,
+      [formId, todayInBangkok()]
     );
     if (!survey) {
       await conn.rollback();

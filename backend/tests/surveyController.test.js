@@ -337,21 +337,22 @@ test('setSharedAll — the UPDATE is scoped to id AND user_id, so a non-owner\'s
   assert.equal(res.statusCode, 404);
 });
 
-// ---------- listOthers() — drafts hidden from non-admins ----------
+// ---------- listOthers() — admin only ----------
 
-test('listOthers — a regular user\'s query excludes other users\' drafts', async () => {
+test('listOthers — a regular user gets an empty list and the DB is never queried', async () => {
   const originalQuery = db.query;
-  let capturedSql;
-  db.query = async (sql) => { capturedSql = sql; return [[]]; };
+  let queried = false;
+  db.query = async () => { queried = true; return [[{ id: 1, share_token: 'secret' }]]; };
   const req = { user: { id: 1, role: 'user' } };
   const res = mockRes();
   await ctrl.listOthers(req, res);
   db.query = originalQuery;
 
-  assert.match(capturedSql, /AND vs\.status != 'draft'/);
+  assert.equal(queried, false);
+  assert.deepEqual(res.body, []);
 });
 
-test('listOthers — an admin\'s query does not filter out drafts', async () => {
+test('listOthers — an admin gets every other user\'s surveys, drafts included, without share_token', async () => {
   const originalQuery = db.query;
   let capturedSql;
   db.query = async (sql) => { capturedSql = sql; return [[]]; };
@@ -361,6 +362,21 @@ test('listOthers — an admin\'s query does not filter out drafts', async () => 
   db.query = originalQuery;
 
   assert.doesNotMatch(capturedSql, /status != 'draft'/);
+  assert.doesNotMatch(capturedSql, /vs\.\*/);
+  assert.doesNotMatch(capturedSql, /share_token/);
+});
+
+test('listShared — never selects share_token (a shared viewer must not be able to submit as the owner\'s link)', async () => {
+  const originalQuery = db.query;
+  let capturedSql;
+  db.query = async (sql) => { capturedSql = sql; return [[]]; };
+  const req = { user: { id: 2, role: 'user' } };
+  const res = mockRes();
+  await ctrl.listShared(req, res);
+  db.query = originalQuery;
+
+  assert.doesNotMatch(capturedSql, /vs\.\*/);
+  assert.doesNotMatch(capturedSql, /share_token/);
 });
 
 // ---------- getByToken() — public endpoint ----------
@@ -393,4 +409,97 @@ test('getByToken — returns the survey + questions and increments view_count fo
   assert.equal(res.statusCode, 200);
   assert.equal(viewCountBumped, true);
   assert.equal(res.body.questions.length, 1);
+});
+
+// ---------- getByToken() — close_date enforcement ----------
+
+test('getByToken — only returns surveys still open by close_date, using the Thai calendar date', async () => {
+  const { todayInBangkok } = require('../src/utils/bangkokDate');
+  const originalQuery = db.query;
+  let capturedSql, capturedParams;
+  db.query = async (sql, params) => {
+    if (sql.includes('FROM surveys') && sql.includes('share_token = ?')) {
+      capturedSql = sql; capturedParams = params;
+      return [[]];
+    }
+    return [[]];
+  };
+  const req = { params: { token: 'tok' } };
+  const res = mockRes();
+  await ctrl.getByToken(req, res);
+  db.query = originalQuery;
+
+  assert.match(capturedSql, /close_date IS NULL OR close_date >= \?/);
+  assert.deepEqual(capturedParams, ['tok', todayInBangkok()]);
+  assert.equal(res.statusCode, 404);
+});
+
+// ---------- update() — validation, write ordering, transaction ----------
+
+test('update — an unknown status is rejected with 400 before touching the DB', async () => {
+  const originalQuery = db.query;
+  let queried = false;
+  db.query = async () => { queried = true; return [[]]; };
+  const req = { user: { id: 1, role: 'user' }, params: { id: '1' }, body: { status: 'archived' } };
+  const res = mockRes();
+  await ctrl.update(req, res);
+  db.query = originalQuery;
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(queried, false);
+});
+
+test('update — the 409 "has responses" guard runs before ANY write (no half-saved edit)', async () => {
+  const originalQuery = db.query;
+  const writes = [];
+  db.query = async (sql) => {
+    if (/^\s*(UPDATE|DELETE|INSERT)/i.test(sql)) writes.push(sql);
+    if (sql.includes('SELECT title, description, status, close_date, target_responses')) {
+      return [[{ title: 'x', description: '', status: 'active', close_date: null, target_responses: null }]];
+    }
+    if (sql.includes('COUNT(*) AS c FROM responses')) return [[{ c: 3 }]];
+    return [[]];
+  };
+  const req = { user: { id: 1, role: 'user' }, params: { id: '1' }, body: { title: 'new title', questions: [{ text: 'q' }] } };
+  const res = mockRes();
+  await ctrl.update(req, res);
+  db.query = originalQuery;
+
+  assert.equal(res.statusCode, 409);
+  assert.deepEqual(writes, []);
+});
+
+test('update — replacing questions runs in one transaction and rolls back if the INSERT fails', async () => {
+  const originalQuery = db.query;
+  const originalGetConnection = db.getConnection;
+  const originalError = console.error;
+  console.error = () => {};
+  db.query = async (sql) => {
+    if (sql.includes('SELECT title, description, status, close_date, target_responses')) {
+      return [[{ title: 'x', description: '', status: 'draft', close_date: null, target_responses: null }]];
+    }
+    if (sql.includes('COUNT(*) AS c FROM responses')) return [[{ c: 0 }]];
+    return [[]];
+  };
+  const log = [];
+  db.getConnection = async () => ({
+    beginTransaction: async () => log.push('begin'),
+    query: async (sql) => {
+      if (sql.trim().startsWith('INSERT INTO questions')) throw new Error('boom');
+      log.push(sql.trim().split(/\s+/)[0]);
+      return [{}];
+    },
+    commit: async () => log.push('commit'),
+    rollback: async () => log.push('rollback'),
+    release: () => log.push('release'),
+  });
+  const req = { user: { id: 1, role: 'user' }, params: { id: '1' }, body: { questions: [{ text: 'q1' }] } };
+  const res = mockRes();
+  await ctrl.update(req, res);
+  db.query = originalQuery;
+  db.getConnection = originalGetConnection;
+  console.error = originalError;
+
+  assert.deepEqual(log, ['begin', 'UPDATE', 'DELETE', 'rollback', 'release']);
+  assert.equal(res.statusCode, 500);
 });

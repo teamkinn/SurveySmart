@@ -219,3 +219,65 @@ test('login — a correct password on an active account succeeds and never retur
   assert.ok(res.body.token);
   assert.equal(res.body.user.password, undefined);
 });
+
+// ---------- OTP attempt limit (migrations/006) ----------
+
+test('verifyResetCode — a wrong code increments attempts on the user\'s live codes and burns them at the limit', async () => {
+  const originalQuery = db.query;
+  const calls = [];
+  db.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.includes('SELECT id FROM users')) return [[{ id: 42 }]];
+    if (sql.includes('SELECT * FROM password_resets')) return [[]]; // wrong code
+    return [{ affectedRows: 1 }];
+  };
+  const req = { body: { email: 'real@x.com', code: '111111' } };
+  const res = mockRes();
+  await ctrl.verifyResetCode(req, res);
+  db.query = originalQuery;
+
+  const bump = calls.find(c => c.sql.includes('attempts = attempts + 1'));
+  assert.ok(bump, 'a wrong guess must be counted');
+  assert.match(bump.sql, /used = IF\(attempts >= \?, 1, used\)/);
+  assert.match(bump.sql, /user_id = \? AND used = 0/);
+  assert.deepEqual(bump.params, [ctrl.MAX_OTP_ATTEMPTS, 42]);
+  assert.equal(ctrl.MAX_OTP_ATTEMPTS, 5);
+  assert.equal(res.statusCode, 400);
+});
+
+test('verifyResetCode — a correct code does not count as a failed attempt', async () => {
+  const originalQuery = db.query;
+  const calls = [];
+  db.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.includes('SELECT id FROM users')) return [[{ id: 42 }]];
+    if (sql.includes('SELECT * FROM password_resets')) return [[{ id: 1, user_id: 42 }]];
+    return [[]];
+  };
+  const req = { body: { email: 'real@x.com', code: '123456' } };
+  const res = mockRes();
+  await ctrl.verifyResetCode(req, res);
+  db.query = originalQuery;
+
+  assert.equal(calls.find(c => c.sql.includes('attempts')), undefined);
+  assert.equal(res.statusCode, 200);
+});
+
+test('verifyResetCode — before migration 006 runs, a wrong code still gets a clean 400 (not a 500)', async () => {
+  const originalQuery = db.query;
+  const originalError = console.error;
+  console.error = () => {};
+  db.query = async (sql) => {
+    if (sql.includes('SELECT id FROM users')) return [[{ id: 42 }]];
+    if (sql.includes('SELECT * FROM password_resets')) return [[]];
+    if (sql.includes('attempts')) { const e = new Error("Unknown column 'attempts'"); e.code = 'ER_BAD_FIELD_ERROR'; throw e; }
+    return [[]];
+  };
+  const req = { body: { email: 'real@x.com', code: '111111' } };
+  const res = mockRes();
+  await ctrl.verifyResetCode(req, res);
+  db.query = originalQuery;
+  console.error = originalError;
+
+  assert.equal(res.statusCode, 400);
+});

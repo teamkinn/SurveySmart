@@ -43,6 +43,9 @@ CREATE TABLE password_resets (
   token      VARCHAR(128) NOT NULL,
   expires_at TIMESTAMP    NOT NULL,
   used       TINYINT(1)   DEFAULT 0,
+  -- wrong-code guesses against this user's outstanding codes; all of them
+  -- are marked used at MAX_OTP_ATTEMPTS (see migrations/006)
+  attempts   TINYINT UNSIGNED NOT NULL DEFAULT 0,
   created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
 
   PRIMARY KEY (id),

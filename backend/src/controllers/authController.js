@@ -1,18 +1,8 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
 const db = require('../config/db');
-
-function makeTransport() {
-  if (!process.env.MAIL_HOST) return null;
-  return nodemailer.createTransport({
-    host: process.env.MAIL_HOST,
-    port: parseInt(process.env.MAIL_PORT) || 587,
-    secure: process.env.MAIL_SECURE === 'true',
-    auth: { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS },
-  });
-}
+const { sendMail } = require('../services/mailer');
 
 const signToken = (user) =>
   jwt.sign(
@@ -161,23 +151,21 @@ exports.forgot = async (req, res) => {
       }
     }
 
-    const transport = makeTransport();
-    if (transport) {
-      await transport.sendMail({
-        from: process.env.MAIL_FROM || process.env.MAIL_USER,
-        to:   email,
-        subject: 'รหัสยืนยันรีเซตรหัสผ่าน SurveySmart',
-        html: `<p>รหัสยืนยันสำหรับรีเซตรหัสผ่านของคุณคือ</p>
-               <p style="font-size:28px;font-weight:700;letter-spacing:6px;">${code}</p>
-               <p>รหัสนี้จะหมดอายุใน 15 นาที</p>
-               <p>หากคุณไม่ได้ขอรีเซต ไม่ต้องทำอะไร</p>`,
-      });
-    } else {
-      // No SMTP configured (e.g. local dev without MAIL_HOST set) — the OTP
-      // would otherwise vanish with no way to complete the flow. This never
-      // goes in the HTTP response (that would let anyone read another
-      // user's OTP just by knowing their email), only the server's own log.
-      console.log(`[dev] ไม่ได้ตั้งค่า MAIL_HOST — รหัสยืนยันรีเซตรหัสผ่านสำหรับ ${email} คือ ${code} (หมดอายุใน 15 นาที)`);
+    const used = await sendMail({
+      to: email,
+      subject: 'รหัสยืนยันรีเซตรหัสผ่าน SurveySmart',
+      html: `<p>รหัสยืนยันสำหรับรีเซตรหัสผ่านของคุณคือ</p>
+             <p style="font-size:28px;font-weight:700;letter-spacing:6px;">${code}</p>
+             <p>รหัสนี้จะหมดอายุใน 15 นาที</p>
+             <p>หากคุณไม่ได้ขอรีเซต ไม่ต้องทำอะไร</p>`,
+    });
+    if (used === 'none') {
+      // No mail transport configured (e.g. local dev without RESEND_API_KEY
+      // / MAIL_HOST) — the OTP would otherwise vanish with no way to
+      // complete the flow. This never goes in the HTTP response (that would
+      // let anyone read another user's OTP just by knowing their email),
+      // only the server's own log.
+      console.log(`[dev] ไม่ได้ตั้งค่าการส่งอีเมล — รหัสยืนยันรีเซตรหัสผ่านสำหรับ ${email} คือ ${code} (หมดอายุใน 15 นาที)`);
     }
     // Never return the code to the caller — even in dev mode
     res.json({ message: 'หากอีเมลนี้มีในระบบ คุณจะได้รับรหัสยืนยันสำหรับรีเซตรหัสผ่าน' });
@@ -200,9 +188,39 @@ async function findValidReset(email, code) {
     'SELECT * FROM password_resets WHERE user_id = ? AND token = ? AND used = 0 AND expires_at > NOW()',
     [userId, code]
   );
-  if (!rows.length) return null;
+  if (!rows.length) {
+    await recordFailedAttempt(userId);
+    return null;
+  }
   return { userId };
 }
+
+// A wrong code counts against every still-live code this user has, and once
+// MAX_OTP_ATTEMPTS is reached they're all marked used — the user has to
+// request a fresh code. Without this, the only thing bounding guesses at a
+// 6-digit code (1,000,000 possibilities) was the per-IP rate limit, which a
+// handful of IPs (or the separate verify/reset limiters) multiplies.
+//
+// MySQL evaluates single-table UPDATE assignments left to right using the
+// already-updated values, so `attempts` in the IF() below is the new count.
+const MAX_OTP_ATTEMPTS = 5;
+async function recordFailedAttempt(userId) {
+  try {
+    await db.query(
+      `UPDATE password_resets
+       SET attempts = attempts + 1, used = IF(attempts >= ?, 1, used)
+       WHERE user_id = ? AND used = 0 AND expires_at > NOW()`,
+      [MAX_OTP_ATTEMPTS, userId]
+    );
+  } catch (e) {
+    // Database not migrated yet (migrations/006 adds `attempts`) — don't turn
+    // a normal "wrong code" answer into a 500; the migration warning at boot
+    // (app.js) already flags this.
+    if (e.code !== 'ER_BAD_FIELD_ERROR') throw e;
+    console.error('recordFailedAttempt: password_resets.attempts missing — run npm run migrate');
+  }
+}
+exports.MAX_OTP_ATTEMPTS = MAX_OTP_ATTEMPTS;
 
 // Lets the UI confirm the OTP before showing the new-password fields,
 // without spending the code yet — the code is still required again (and

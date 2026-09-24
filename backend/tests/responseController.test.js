@@ -315,3 +315,31 @@ test('submit — a score outside the question\'s configured range is dropped ins
   assert.equal(res.statusCode, 201);
   assert.equal(insertedAnswerValues[0][4], null);
 });
+
+test('submit — the survey lookup also enforces close_date against the Thai calendar date', async () => {
+  const { todayInBangkok } = require('../src/utils/bangkokDate');
+  let capturedSql, capturedParams;
+  const originalGetConnection = db.getConnection;
+  db.getConnection = async () => ({
+    beginTransaction: async () => {},
+    query: async (sql, params) => {
+      if (sql.includes('FROM surveys') && sql.includes("status = 'active'")) {
+        capturedSql = sql; capturedParams = params;
+        return [[]]; // past close_date -> no row
+      }
+      return [{ insertId: 1 }];
+    },
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+  });
+
+  const req = { params: { surveyId: '1' }, body: { answers: [], share_token: 'tok-1' }, ip: '127.0.0.1' };
+  const res = mockRes();
+  await ctrl.submit(req, res);
+  db.getConnection = originalGetConnection;
+
+  assert.match(capturedSql, /close_date IS NULL OR close_date >= \?/);
+  assert.deepEqual(capturedParams, ['1', 'tok-1', todayInBangkok()]);
+  assert.equal(res.statusCode, 403);
+});

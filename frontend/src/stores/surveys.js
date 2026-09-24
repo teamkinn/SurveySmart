@@ -14,10 +14,15 @@ export const useSurveyStore = defineStore('surveys', {
     async fetchAll() {
       this.loading = true;
       try {
+        // /surveys/others is admin-only server-side (returns [] for everyone
+        // else) — skip the request entirely for regular users.
+        let role = null;
+        try { role = JSON.parse(localStorage.getItem('user') || 'null')?.role; } catch { /* malformed — treat as non-admin */ }
+        const isAdmin = ['admin', 'head_admin'].includes(role);
         const [s, sh, ot, st, al] = await Promise.all([
           api.get('/surveys'),
           api.get('/surveys/shared'),
-          api.get('/surveys/others'),
+          isAdmin ? api.get('/surveys/others') : Promise.resolve({ data: [] }),
           api.get('/surveys/stats'),
           api.get('/albums'),
         ]);

@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { todayInBangkok, OPEN_BY_CLOSE_DATE_SQL } = require('../utils/bangkokDate');
 const { randomBytes } = require('crypto');
 
 const genToken = () => randomBytes(32).toString('hex');
@@ -31,6 +32,16 @@ const SURVEY_SUMMARY_JOIN = `
          (s.google_refresh_token IS NOT NULL) AS auto_sync_enabled
   FROM v_survey_summary v
   JOIN surveys s ON s.id = v.id
+`;
+
+// v_survey_summary columns that are safe to show a user who does NOT own
+// the survey — everything except share_token. share_token is what gates
+// public submissions (responseController.submit), so it must only ever be
+// returned to the owner (list/create/update) or an admin (adminController),
+// never to someone the survey was merely shared with or listed to.
+const SAFE_SUMMARY_COLUMNS = `
+  vs.id, vs.user_id, vs.title, vs.status, vs.target_responses, vs.close_date,
+  vs.created_at, vs.updated_at, vs.response_count, vs.avg_score
 `;
 
 exports.list = async (req, res) => {
@@ -136,11 +147,18 @@ exports.create = async (req, res) => {
   }
 };
 
+const VALID_STATUSES = ['draft', 'active', 'closed'];
+
 exports.update = async (req, res) => {
   try {
     const { title, description, status, close_date, target_responses, questions } = req.body;
     const questionsError = validateQuestionsPayload(questions);
     if (questionsError) return res.status(400).json({ message: questionsError });
+    // surveys.status is an ENUM — an unknown value used to reach MySQL and
+    // come back as a generic 500 instead of a clear 400.
+    if (status !== undefined && !VALID_STATUSES.includes(status)) {
+      return res.status(400).json({ message: 'สถานะแบบสอบถามไม่ถูกต้อง' });
+    }
 
     // Only head_admin may edit surveys they don't own — a regular admin can
     // still edit their own (falls through to the ownership-scoped query).
@@ -154,28 +172,17 @@ exports.update = async (req, res) => {
     if (!chk.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถาม' });
     const current = chk[0];
 
-    // Only overwrite fields the caller actually sent — a partial PUT (e.g.
-    // just { status }) must not blank out the rest of the survey.
-    await db.query(
-      `UPDATE surveys
-       SET title=?, description=?, status=?, close_date=?, target_responses=?, updated_at=NOW()
-       WHERE id=?`,
-      [
-        title !== undefined ? title : current.title,
-        description !== undefined ? description : current.description,
-        status !== undefined ? status : current.status,
-        close_date !== undefined ? close_date || null : current.close_date,
-        target_responses !== undefined ? target_responses || null : current.target_responses,
-        req.params.id,
-      ]
-    );
-
-    if (Array.isArray(questions)) {
+    const replacingQuestions = Array.isArray(questions);
+    if (replacingQuestions) {
       // Replacing questions deletes the old rows, which cascades and wipes
       // response_answers for any response already tied to them (per-question
       // detail is lost even though the response and its overall_score
       // survive). Once a survey has responses, refuse to restructure its
       // questions rather than silently destroying that data.
+      //
+      // Checked BEFORE any write: previously the survey's title/status/etc.
+      // were saved first and only then was this 409 returned, so the user
+      // saw "couldn't save" while half of the edit had in fact been saved.
       const [[{ c: responseCount }]] = await db.query(
         'SELECT COUNT(*) AS c FROM responses WHERE survey_id = ?',
         [req.params.id]
@@ -185,24 +192,57 @@ exports.update = async (req, res) => {
           message: 'ไม่สามารถแก้ไขคำถามได้ เนื่องจากมีผู้ตอบแบบสอบถามนี้แล้ว',
         });
       }
+    }
 
-      await db.query('DELETE FROM questions WHERE survey_id = ?', [req.params.id]);
-      if (questions.length) {
-        const vals = questions.map(q => [
-          req.params.id,
-          q.section || 1,
-          q.order || 0,
-          q.text || '',
-          q.type || 'short',
-          q.required ? 1 : 0,
-          q.options ? JSON.stringify(q.options) : null,
-        ]);
-        await db.query(
-          `INSERT INTO questions
-             (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
-           VALUES ?`,
-          [vals]
-        );
+    // Only overwrite fields the caller actually sent — a partial PUT (e.g.
+    // just { status }) must not blank out the rest of the survey.
+    const updateSql = `UPDATE surveys
+       SET title=?, description=?, status=?, close_date=?, target_responses=?, updated_at=NOW()
+       WHERE id=?`;
+    const updateParams = [
+      title !== undefined ? title : current.title,
+      description !== undefined ? description : current.description,
+      status !== undefined ? status : current.status,
+      close_date !== undefined ? close_date || null : current.close_date,
+      target_responses !== undefined ? target_responses || null : current.target_responses,
+      req.params.id,
+    ];
+
+    if (!replacingQuestions) {
+      await db.query(updateSql, updateParams);
+    } else {
+      // One transaction for the survey row + DELETE + re-INSERT of its
+      // questions. Previously these ran as separate autocommitted queries:
+      // if the INSERT failed after the DELETE had already committed, the
+      // survey was left with no questions at all.
+      const conn = await db.getConnection();
+      try {
+        await conn.beginTransaction();
+        await conn.query(updateSql, updateParams);
+        await conn.query('DELETE FROM questions WHERE survey_id = ?', [req.params.id]);
+        if (questions.length) {
+          const vals = questions.map(q => [
+            req.params.id,
+            q.section || 1,
+            q.order || 0,
+            q.text || '',
+            q.type || 'short',
+            q.required ? 1 : 0,
+            q.options ? JSON.stringify(q.options) : null,
+          ]);
+          await conn.query(
+            `INSERT INTO questions
+               (survey_id, section_number, sort_order, question_text, question_type, is_required, options_json)
+             VALUES ?`,
+            [vals]
+          );
+        }
+        await conn.commit();
+      } catch (e) {
+        await conn.rollback();
+        throw e;
+      } finally {
+        conn.release();
       }
     }
 
@@ -252,13 +292,24 @@ exports.publish = async (req, res) => {
 
 exports.listOthers = async (req, res) => {
   try {
+    // Admin/head_admin only. Registration is open to anyone, so returning
+    // every other user's surveys to any logged-in account exposed the whole
+    // system's survey titles/stats to strangers — and (before
+    // SAFE_SUMMARY_COLUMNS) each survey's share_token too, which is the only
+    // thing gating public submissions (responseController.submit), letting
+    // anyone who registered POST forged responses to every active survey.
+    // A regular user can't open another user's unshared survey anyway
+    // (canAccessSurvey 404s it), so this list had no legitimate use for them.
+    // Returns [] rather than 403 so the frontend's Promise.all in
+    // stores/surveys.js fetchAll() keeps working for older clients.
     const isAdmin = ['admin', 'head_admin'].includes(req.user.role);
+    if (!isAdmin) return res.json([]);
+
     const [rows] = await db.query(
-      `SELECT vs.*, u.first_name, u.last_name, u.username AS owner_username
+      `SELECT ${SAFE_SUMMARY_COLUMNS}, u.first_name, u.last_name, u.username AS owner_username
        FROM v_survey_summary vs
        JOIN users u ON u.id = vs.user_id
        WHERE vs.user_id != ?
-       ${isAdmin ? '' : "AND vs.status != 'draft'"}
        ORDER BY vs.created_at DESC`,
       [req.user.id]
     );
@@ -278,7 +329,7 @@ exports.listOthers = async (req, res) => {
 exports.listShared = async (req, res) => {
   try {
     const [rows] = await db.query(
-      `SELECT vs.*, u.first_name, u.last_name, u.username AS owner_username,
+      `SELECT ${SAFE_SUMMARY_COLUMNS}, u.first_name, u.last_name, u.username AS owner_username,
               ss.created_at AS shared_at, (ss.id IS NULL) AS shared_via_public
        FROM v_survey_summary vs
        JOIN surveys s ON s.id = vs.id
@@ -430,8 +481,12 @@ exports.stats = async (req, res) => {
 exports.getByToken = async (req, res) => {
   try {
     const [surveys] = await db.query(
-      "SELECT id, title, description FROM surveys WHERE share_token = ? AND status = 'active'",
-      [req.params.token]
+      // close_date: a survey past its closing date (Thai calendar day) is
+      // treated exactly like a closed one — previously close_date was stored
+      // and shown in the editor but never enforced anywhere.
+      `SELECT id, title, description FROM surveys
+       WHERE share_token = ? AND status = 'active' AND ${OPEN_BY_CLOSE_DATE_SQL}`,
+      [req.params.token, todayInBangkok()]
     );
     if (!surveys.length) return res.status(404).json({ message: 'ไม่พบแบบสอบถามหรือปิดรับแล้ว' });
 

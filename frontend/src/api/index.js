@@ -18,6 +18,9 @@ api.interceptors.response.use(
     const isAuthAttempt = url.includes('/auth/login') || url.includes('/auth/register');
     if (err.response?.status === 401 && !isAuthAttempt) {
       localStorage.removeItem('token');
+      // Clear the cached user too — otherwise a stale role/name from the
+      // expired session lingers in localStorage until the next login.
+      localStorage.removeItem('user');
       window.location.href = '/login';
     }
     return Promise.reject(err);

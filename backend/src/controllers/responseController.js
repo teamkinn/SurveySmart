@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { todayInBangkok, OPEN_BY_CLOSE_DATE_SQL } = require('../utils/bangkokDate');
 const { resolveChoiceScore, scoreFromLikertLabel } = require('../utils/likertScore');
 
 // Owner, admin, a user the survey was explicitly shared with (survey_shares),
@@ -104,8 +105,9 @@ exports.submit = async (req, res) => {
     // share_token is what's supposed to gate that, so submission must
     // require it too, not just the public GET that loads the form.
     const [[survey]] = await conn.query(
-      "SELECT id FROM surveys WHERE id = ? AND status = 'active' AND share_token = ?",
-      [surveyId, share_token || null]
+      `SELECT id FROM surveys
+       WHERE id = ? AND status = 'active' AND share_token = ? AND ${OPEN_BY_CLOSE_DATE_SQL}`,
+      [surveyId, share_token || null, todayInBangkok()]
     );
     if (!survey) {
       await conn.rollback();
