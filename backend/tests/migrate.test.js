@@ -140,3 +140,53 @@ test('run — a real (non-allowlisted) error still aborts the file and is not sw
   db.query = originalQuery;
   db.getConnection = originalGetConnection;
 });
+
+// ---------- runWithRetry() — database not reachable yet at boot ----------
+
+test('runWithRetry — retries a not-yet-reachable DB (AggregateError ETIMEDOUT/ECONNREFUSED) and then succeeds', async () => {
+  const { runWithRetry } = require('../src/migrate');
+  const agg = new AggregateError(
+    [Object.assign(new Error('v6'), { code: 'ETIMEDOUT' }), Object.assign(new Error('v4'), { code: 'ECONNREFUSED' })],
+    'connect failed'
+  );
+  agg.code = 'ETIMEDOUT';
+  let calls = 0;
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  const result = await runWithRetry({
+    attempts: 5,
+    sleep: async () => {},
+    runFn: async () => { calls++; if (calls < 3) throw agg; return { applied: ['x.sql'] }; },
+  });
+  console.warn = originalWarn;
+  assert.equal(calls, 3);
+  assert.deepEqual(result, { applied: ['x.sql'] });
+});
+
+test('runWithRetry — a real error (e.g. bad SQL) is not retried', async () => {
+  const { runWithRetry } = require('../src/migrate');
+  let calls = 0;
+  const sqlErr = Object.assign(new Error('syntax'), { code: 'ER_PARSE_ERROR' });
+  await assert.rejects(
+    runWithRetry({ attempts: 5, sleep: async () => {}, runFn: async () => { calls++; throw sqlErr; } }),
+    /syntax/
+  );
+  assert.equal(calls, 1);
+});
+
+test('runWithRetry — gives up after the configured number of attempts', async () => {
+  const { runWithRetry } = require('../src/migrate');
+  let calls = 0;
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  await assert.rejects(
+    runWithRetry({
+      attempts: 4,
+      sleep: async () => {},
+      runFn: async () => { calls++; throw Object.assign(new Error('refused'), { code: 'ECONNREFUSED' }); },
+    }),
+    /refused/
+  );
+  console.warn = originalWarn;
+  assert.equal(calls, 4);
+});

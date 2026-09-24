@@ -144,10 +144,45 @@ async function run({ silent = false } = {}) {
   return { applied: appliedNow };
 }
 
-module.exports = { run, checkPending, pendingMigrations, parseStatements, MIGRATIONS_DIR };
+// Connection-level errors worth retrying: the database simply isn't
+// reachable *yet*. On Railway the Pre-deploy Command container starts and
+// runs this within ~1s, before its private network (mysql.railway.internal)
+// is up — the first attempt failed with ETIMEDOUT (IPv6) / ECONNREFUSED
+// (IPv4) and aborted the whole deploy. mysql2 wraps the per-address
+// failures in an AggregateError whose own .code is the first one's, so
+// checking err.code and each err.errors[].code covers both shapes.
+// Anything else (bad SQL, access denied, unknown database) is a real error
+// and is NOT retried.
+const RETRYABLE_CODES = new Set([
+  'ETIMEDOUT', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH',
+  'ENETUNREACH', 'ECONNRESET', 'PROTOCOL_CONNECTION_LOST',
+]);
+function isRetryableConnectionError(err) {
+  if (!err) return false;
+  if (RETRYABLE_CODES.has(err.code)) return true;
+  return Array.isArray(err.errors) && err.errors.some(e => RETRYABLE_CODES.has(e?.code));
+}
+
+async function runWithRetry({ attempts = 10, delayMs = 3000, runFn = run, sleep } = {}) {
+  const wait = sleep || (ms => new Promise(r => setTimeout(r, ms)));
+  for (let i = 1; ; i++) {
+    try {
+      return await runFn();
+    } catch (err) {
+      if (i >= attempts || !isRetryableConnectionError(err)) throw err;
+      console.warn(`[migrate] ยังเชื่อมต่อฐานข้อมูลไม่ได้ (${err.code}) — ลองใหม่ครั้งที่ ${i + 1}/${attempts} ใน ${delayMs / 1000} วินาที`);
+      await wait(delayMs);
+    }
+  }
+}
+
+module.exports = {
+  run, runWithRetry, isRetryableConnectionError,
+  checkPending, pendingMigrations, parseStatements, MIGRATIONS_DIR,
+};
 
 if (require.main === module) {
-  run()
+  runWithRetry()
     .then(() => process.exit(0))
     .catch(err => {
       console.error('เกิดข้อผิดพลาดตอนรัน migration:', err);
