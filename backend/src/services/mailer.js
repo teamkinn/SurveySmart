@@ -7,15 +7,50 @@
 // arrived. Resend's HTTPS API goes out over port 443, which is allowed.
 //
 // Picks the first configured transport, in order:
-//   1. RESEND_API_KEY set  -> Resend HTTPS API (use this on Railway)
-//   2. MAIL_HOST set       -> SMTP via nodemailer (fine for local dev / Pro plan)
-//   3. neither             -> returns 'none'; the caller logs the code instead
+//   1. BREVO_API_KEY set   -> Brevo HTTPS API. Only needs ONE verified sender
+//                             address (e.g. a Gmail address) — no domain —
+//                             and can then send to anyone.
+//   2. RESEND_API_KEY set  -> Resend HTTPS API. Without a verified domain it
+//                             can only send to the Resend account's own email.
+//   3. MAIL_HOST set       -> SMTP via nodemailer (fine for local dev / Pro plan)
+//   4. none of the above   -> returns 'none'; the caller logs the code instead
 //
 // Returns which transport was used. Throws if a configured transport fails,
 // so the caller can surface a real error instead of pretending it sent.
 const nodemailer = require('nodemailer');
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
+const BREVO_ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
+
+// "SurveySmart <no-reply@x.com>" -> { name: 'SurveySmart', email: 'no-reply@x.com' }
+// "no-reply@x.com"               -> { name: 'SurveySmart', email: 'no-reply@x.com' }
+function parseAddress(value, defaultName = 'SurveySmart') {
+  const v = String(value || '').trim();
+  const m = v.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
+  if (m) return { name: m[1].trim() || defaultName, email: m[2].trim() };
+  return { name: defaultName, email: v };
+}
+
+async function sendViaBrevo({ to, subject, html }) {
+  const sender = parseAddress(process.env.MAIL_FROM);
+  if (!sender.email) {
+    throw new Error('MAIL_FROM must be set to the Brevo-verified sender address when using BREVO_API_KEY');
+  }
+  const resp = await fetch(BREVO_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'api-key': process.env.BREVO_API_KEY,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ sender, to: [{ email: to }], subject, htmlContent: html }),
+  });
+  if (!resp.ok) {
+    let detail = '';
+    try { detail = JSON.stringify(await resp.json()); } catch { /* non-JSON body */ }
+    throw new Error(`Brevo API ${resp.status}: ${detail}`);
+  }
+}
 
 async function sendViaResend({ to, subject, html }) {
   const from = process.env.MAIL_FROM || 'SurveySmart <onboarding@resend.dev>';
@@ -50,6 +85,10 @@ async function sendViaSmtp({ to, subject, html }) {
 }
 
 async function sendMail(message) {
+  if (process.env.BREVO_API_KEY) {
+    await sendViaBrevo(message);
+    return 'brevo';
+  }
   if (process.env.RESEND_API_KEY) {
     await sendViaResend(message);
     return 'resend';
@@ -61,4 +100,4 @@ async function sendMail(message) {
   return 'none';
 }
 
-module.exports = { sendMail, RESEND_ENDPOINT };
+module.exports = { sendMail, parseAddress, RESEND_ENDPOINT, BREVO_ENDPOINT };
