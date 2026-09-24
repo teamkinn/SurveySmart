@@ -137,31 +137,20 @@
         </div>
         <div v-else class="charts-grid">
           <div v-for="c in filteredCharts" :key="c.question_id" class="chart-card">
+            <!-- Choice / score questions: same donut / bar / table card as the
+                 per-survey Dashboard (ResponsesView) -->
+            <QuestionChartCard
+              v-if="(c.chartType === 'bar' || c.chartType === 'score') && c.data.length"
+              :chart="c"
+              :type="chartPrefs.typeFor(c.question_id)"
+              @update:type="t => chartPrefs.setType(c.question_id, t)"
+            />
+
+            <template v-else>
             <div class="chart-q-text">{{ c.question_text }}</div>
             <div class="chart-q-meta">{{ c.total }} คำตอบ · {{ typeLabel(c.question_type) }}</div>
 
-            <div v-if="c.chartType === 'bar' && c.data.length" class="qbar-chart">
-              <div v-for="item in c.data" :key="item.label" class="qbar-row">
-                <div class="qbar-label">{{ item.label }}</div>
-                <div class="qbar-track">
-                  <div class="qbar-fill" :style="{ width: c.total ? (item.count / c.total * 100) + '%' : '0%' }"></div>
-                </div>
-                <div class="qbar-count">{{ item.count }}</div>
-                <div class="qbar-pct">{{ c.total ? Math.round(item.count / c.total * 100) : 0 }}%</div>
-              </div>
-            </div>
-
-            <div v-else-if="c.chartType === 'score' && c.data.length" class="qbar-chart">
-              <div v-for="item in c.data" :key="item.label" class="qbar-row">
-                <div class="qbar-label score-label">{{ item.label }}</div>
-                <div class="qbar-track">
-                  <div class="qbar-fill qbar-fill-gold" :style="{ width: c.total ? (item.count / c.total * 100) + '%' : '0%' }"></div>
-                </div>
-                <div class="qbar-count">{{ item.count }}</div>
-              </div>
-            </div>
-
-            <div v-else-if="c.chartType === 'text'" class="text-answers">
+            <div v-if="c.chartType === 'text'" class="text-answers">
               <div v-if="!c.data.length" class="text-empty">ยังไม่มีคำตอบ</div>
               <div v-else v-for="(t, i) in c.data" :key="i" class="text-bubble">{{ t }}</div>
             </div>
@@ -184,6 +173,7 @@
             </div>
 
             <div v-else class="text-empty">ยังไม่มีข้อมูลเพียงพอ</div>
+            </template>
           </div>
         </div>
       </template>
@@ -235,6 +225,8 @@ import { useSurveyStore } from '@/stores/surveys';
 import api from '@/api';
 import { formatDate, badgeClass, badgeText, interpClass, interpText } from '@/composables/useSurveyStatus';
 import { localDateStr } from '@/composables/useLocalDate';
+import QuestionChartCard from '@/components/Survey/QuestionChartCard.vue';
+import { useChartTypePrefs } from '@/composables/useChartTypePrefs';
 
 const showToast = inject('showToast');
 const surveyStore = useSurveyStore();
@@ -245,6 +237,8 @@ const activeTab = ref('overview');
 const activeAlbumId = ref(null);
 const trendRangeDays = ref(7);
 const questionSearch = ref('');
+// Per-question chart type (donut / bar / table), shared with ResponsesView.
+const chartPrefs = useChartTypePrefs();
 
 const overallAvg = computed(() => {
   const a = parseFloat(surveyStore.stats.overall_avg);
@@ -408,6 +402,7 @@ const Q_TYPE_LABELS = {
 function typeLabel(t) { return Q_TYPE_LABELS[t] || t; }
 
 watch(selectedId, async (id) => {
+  if (id != null) chartPrefs.load(id);
   if (!id) { responses.value = []; charts.value = []; return; }
   try {
     const [r1, r2] = await Promise.all([
@@ -527,18 +522,9 @@ onMounted(() => surveyStore.fetchAll());
 .trend-label { font-size: 11px; color: var(--text3); text-align: center; white-space: nowrap; }
 
 /* ── Charts (รายคำถาม tab) ── */
-.charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
 .chart-q-text { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 3px; line-height: 1.4; }
 .chart-q-meta { font-size: 11px; color: var(--text3); margin-bottom: 12px; }
-.qbar-chart { display: flex; flex-direction: column; gap: 8px; }
-.qbar-row { display: flex; align-items: center; gap: 8px; }
-.qbar-label { width: 130px; font-size: 12px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; text-align: right; }
-.score-label { width: 28px; text-align: center; font-weight: 700; }
-.qbar-track { flex: 1; height: 18px; background: var(--slate2); border-radius: 9px; overflow: hidden; }
-.qbar-fill { height: 100%; background: var(--royal); border-radius: 9px; transition: width .4s ease; min-width: 2px; }
-.qbar-fill-gold { background: var(--gold); }
-.qbar-count { width: 26px; font-size: 12px; color: var(--text2); text-align: right; flex-shrink: 0; }
-.qbar-pct { width: 36px; font-size: 11px; color: var(--text3); flex-shrink: 0; }
 .text-answers { display: flex; flex-direction: column; gap: 6px; }
 .text-bubble { background: var(--slate); border-radius: var(--r2); padding: 7px 10px; font-size: 13px; color: var(--text); border-left: 3px solid var(--royal2); }
 .text-empty { font-size: 13px; color: var(--text3); font-style: italic; }

@@ -1,0 +1,169 @@
+<svg viewBox="0 0 1000 1820" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>SurveySmart Flowchart (standard symbols)</title>
+<desc>ผังงานมาตรฐานของระบบ SurveySmart ใช้วงรีแทนจุดเริ่มต้น/สิ้นสุด สี่เหลี่ยมแทนขั้นตอนการทำงาน สี่เหลี่ยมข้าวหลามตัดแทนจุดตัดสินใจ และทรงกระบอกแทนฐานข้อมูล</desc>
+
+<rect x="0" y="0" width="1000" height="1820" fill="#ffffff"/>
+
+<style>
+  .term { fill: #eaf1fd; stroke: #3b6fd6; stroke-width: 1.6; }
+  .proc { fill: #ffffff; stroke: #4a5568; stroke-width: 1.6; }
+  .dec  { fill: #fff6e9; stroke: #d98c1a; stroke-width: 1.6; }
+  .db   { fill: #f2eefc; stroke: #7c4fd6; stroke-width: 1.6; }
+  .box-text { font-family: 'Tahoma','Segoe UI',sans-serif; font-size: 13px; font-weight: 700; fill: #1a2233; }
+  .lbl { font-family: 'Tahoma','Segoe UI',sans-serif; font-size: 11px; font-weight: 700; fill: #b2530c; }
+  .line { stroke: #6b7684; stroke-width: 1.6; fill: none; marker-end: url(#ah); }
+  .legend-text { font-family: 'Tahoma','Segoe UI',sans-serif; font-size: 10.5px; fill: #4a5568; }
+</style>
+<defs>
+  <marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+    <path d="M0,0 L6,3 L0,6 Z" fill="#6b7684"/>
+  </marker>
+</defs>
+
+<!-- Legend -->
+<g>
+  <ellipse cx="700" cy="18" rx="22" ry="12" class="term"/>
+  <text x="730" y="22" class="legend-text">เริ่มต้น/สิ้นสุด</text>
+  <rect x="820" y="8" width="34" height="20" rx="3" class="proc"/>
+  <text x="862" y="22" class="legend-text">การทำงาน</text>
+  <polygon points="700,45 722,58 700,71 678,58" class="dec"/>
+  <text x="730" y="62" class="legend-text">ตัดสินใจ</text>
+  <rect x="820" y="48" width="30" height="20" class="db"/>
+  <text x="858" y="62" class="legend-text">ฐานข้อมูล</text>
+</g>
+
+<!-- 1. Start -->
+<ellipse cx="500" cy="40" rx="130" ry="28" class="term"/>
+<text x="500" y="45" text-anchor="middle" class="box-text">เริ่มต้น: เข้าเว็บไซต์</text>
+<path d="M500,68 L500,105" class="line"/>
+
+<!-- 2. Decision1: has account -->
+<polygon points="500,105 660,160 500,215 340,160" class="dec"/>
+<text x="500" y="157" text-anchor="middle" class="box-text">มีบัญชีอยู่แล้ว</text>
+<text x="500" y="171" text-anchor="middle" class="box-text">หรือไม่?</text>
+
+<path d="M340,160 L170,160 L170,220" class="line"/>
+<text x="255" y="150" text-anchor="middle" class="lbl">ยังไม่มี</text>
+<rect x="70" y="220" width="200" height="54" rx="6" class="proc"/>
+<text x="170" y="243" text-anchor="middle" class="box-text">สมัครสมาชิก</text>
+<text x="170" y="260" text-anchor="middle" class="box-text">(Register)</text>
+
+<path d="M660,160 L830,160 L830,220" class="line"/>
+<text x="745" y="150" text-anchor="middle" class="lbl">มีแล้ว</text>
+<rect x="730" y="220" width="200" height="54" rx="6" class="proc"/>
+<text x="830" y="243" text-anchor="middle" class="box-text">เข้าสู่ระบบ</text>
+<text x="830" y="260" text-anchor="middle" class="box-text">(Login)</text>
+
+<path d="M170,274 L170,310 L480,310 L480,332" class="line"/>
+<path d="M830,274 L830,310 L520,310 L520,332" class="line"/>
+
+<!-- 3. Process: main hub -->
+<rect x="370" y="332" width="260" height="52" rx="6" class="proc"/>
+<text x="500" y="363" text-anchor="middle" class="box-text">เข้าหน้าหลัก (MainLayout)</text>
+<path d="M500,384 L500,410" class="line"/>
+
+<!-- 4. Decision2: what to do -->
+<polygon points="500,410 670,470 500,530 330,470" class="dec"/>
+<text x="500" y="466" text-anchor="middle" class="box-text">ต้องการทำ</text>
+<text x="500" y="480" text-anchor="middle" class="box-text">อะไร?</text>
+
+<path d="M330,470 L160,470 L160,560" class="line"/>
+<text x="245" y="460" text-anchor="middle" class="lbl">สร้างใหม่</text>
+<rect x="50" y="560" width="220" height="54" rx="6" class="proc"/>
+<text x="160" y="583" text-anchor="middle" class="box-text">สร้างแบบสอบถามใหม่</text>
+<text x="160" y="600" text-anchor="middle" class="box-text">(SurveyBuilder)</text>
+
+<path d="M500,530 L500,560" class="line"/>
+<text x="545" y="548" text-anchor="middle" class="lbl">นำเข้า</text>
+<rect x="390" y="560" width="220" height="54" rx="6" class="proc"/>
+<text x="500" y="583" text-anchor="middle" class="box-text">นำเข้าจาก</text>
+<text x="500" y="600" text-anchor="middle" class="box-text">Google Forms</text>
+
+<path d="M670,470 L850,470 L850,560" class="line"/>
+<text x="765" y="460" text-anchor="middle" class="lbl">จัดการที่มี</text>
+<rect x="740" y="560" width="220" height="54" rx="6" class="proc"/>
+<text x="850" y="583" text-anchor="middle" class="box-text">แก้ไข / แชร์</text>
+<text x="850" y="600" text-anchor="middle" class="box-text">ที่มีอยู่แล้ว</text>
+
+<path d="M160,614 L160,650 L480,650 L480,682" class="line"/>
+<path d="M500,614 L500,682" class="line"/>
+<path d="M850,614 L850,650 L520,650 L520,682" class="line"/>
+
+<!-- 5. Process: draft -->
+<rect x="370" y="682" width="260" height="52" rx="6" class="proc"/>
+<text x="500" y="713" text-anchor="middle" class="box-text">แบบสอบถาม (สถานะ Draft)</text>
+<path d="M500,734 L500,765" class="line"/>
+
+<!-- 6. Decision3: publish? -->
+<polygon points="500,765 650,820 500,875 350,820" class="dec"/>
+<text x="500" y="824" text-anchor="middle" class="box-text">พร้อมเผยแพร่?</text>
+
+<path d="M350,820 L150,820 L150,708 L370,708" class="line"/>
+<text x="200" y="810" text-anchor="middle" class="lbl">ยัง (แก้ไขต่อ)</text>
+
+<path d="M500,875 L500,930" class="line"/>
+<text x="530" y="905" text-anchor="middle" class="lbl">พร้อม</text>
+
+<!-- 7. Process: active -->
+<rect x="370" y="930" width="260" height="52" rx="6" class="proc"/>
+<text x="500" y="953" text-anchor="middle" class="box-text">สถานะ Active</text>
+<text x="500" y="969" text-anchor="middle" class="box-text">ได้ลิงก์ / QR Code</text>
+<path d="M500,982 L500,1010" class="line"/>
+
+<!-- 8. Decision4: respondent path -->
+<polygon points="500,1010 670,1070 500,1130 330,1070" class="dec"/>
+<text x="500" y="1066" text-anchor="middle" class="box-text">ผู้ตอบเข้า</text>
+<text x="500" y="1080" text-anchor="middle" class="box-text">ทางไหน?</text>
+
+<path d="M330,1070 L170,1070 L170,1130" class="line"/>
+<text x="245" y="1060" text-anchor="middle" class="lbl">ลิงก์ตรงระบบ</text>
+<rect x="50" y="1130" width="240" height="54" rx="6" class="proc"/>
+<text x="170" y="1153" text-anchor="middle" class="box-text">กรอกแบบฟอร์ม</text>
+<text x="170" y="1170" text-anchor="middle" class="box-text">(SurveyFillView)</text>
+
+<path d="M670,1070 L850,1070 L850,1130" class="line"/>
+<text x="765" y="1060" text-anchor="middle" class="lbl">Google Forms</text>
+<rect x="730" y="1130" width="240" height="54" rx="6" class="proc"/>
+<text x="850" y="1153" text-anchor="middle" class="box-text">ตอบใน</text>
+<text x="850" y="1170" text-anchor="middle" class="box-text">Google Forms</text>
+<path d="M850,1184 L850,1210" class="line"/>
+<rect x="730" y="1210" width="240" height="54" rx="6" class="proc"/>
+<text x="850" y="1233" text-anchor="middle" class="box-text">เจ้าของกด Sync</text>
+<text x="850" y="1250" text-anchor="middle" class="box-text">(Google OAuth)</text>
+
+<path d="M170,1184 L170,1260 L430,1260 L430,1300" class="line"/>
+<path d="M850,1264 L850,1290 L570,1290 L570,1300" class="line"/>
+
+<!-- 9. Database cylinder -->
+<rect x="390" y="1305" width="220" height="56" class="db"/>
+<path d="M390,1361 A110,14 0 0 0 610,1361" class="db"/>
+<ellipse cx="500" cy="1305" rx="110" ry="14" class="db"/>
+<text x="500" y="1338" text-anchor="middle" class="box-text">ฐานข้อมูล MySQL</text>
+<text x="500" y="1353" text-anchor="middle" class="box-text">(surveys, responses)</text>
+<path d="M500,1375 L500,1410" class="line"/>
+
+<!-- 10. Process: dashboard -->
+<rect x="340" y="1410" width="320" height="52" rx="6" class="proc"/>
+<text x="500" y="1441" text-anchor="middle" class="box-text">เจ้าของดูผลวิเคราะห์ (Dashboard)</text>
+<path d="M500,1462 L500,1495" class="line"/>
+
+<!-- 11. Decision5: is admin -->
+<polygon points="500,1495 650,1550 500,1605 350,1550" class="dec"/>
+<text x="500" y="1546" text-anchor="middle" class="box-text">เป็น Admin /</text>
+<text x="500" y="1560" text-anchor="middle" class="box-text">Head Admin?</text>
+
+<path d="M650,1550 L820,1550 L820,1610" class="line"/>
+<text x="735" y="1540" text-anchor="middle" class="lbl">ใช่</text>
+<rect x="700" y="1610" width="240" height="54" rx="6" class="proc"/>
+<text x="820" y="1633" text-anchor="middle" class="box-text">ดูภาพรวมทั้งระบบ</text>
+<text x="820" y="1650" text-anchor="middle" class="box-text">(Admin Panel)</text>
+
+<path d="M820,1664 L820,1713 L500,1713" class="line"/>
+<path d="M500,1605 L500,1713" class="line"/>
+<text x="530" y="1660" text-anchor="middle" class="lbl">ไม่ใช่</text>
+
+<!-- 12. End -->
+<ellipse cx="500" cy="1745" rx="130" ry="28" class="term"/>
+<text x="500" y="1750" text-anchor="middle" class="box-text">จบกระบวนการ</text>
+
+</svg>
