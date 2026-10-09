@@ -503,3 +503,38 @@ test('update — replacing questions runs in one transaction and rolls back if t
   assert.deepEqual(log, ['begin', 'UPDATE', 'DELETE', 'rollback', 'release']);
   assert.equal(res.statusCode, 500);
 });
+
+// ---------- get() — share_token only for owner/admin ----------
+
+test('get — a user the survey is only shared with does NOT receive share_token', async () => {
+  const originalQuery = db.query;
+  db.query = async (sql) => {
+    if (sql.includes('LEFT JOIN survey_shares')) return [[{ id: 1 }]];
+    if (sql.includes('FROM surveys WHERE id')) return [[{ id: 1, user_id: 9, title: 'x', share_token: 'secret-token' }]];
+    if (sql.includes('FROM questions')) return [[]];
+    return [[]];
+  };
+  const req = { user: { id: 2, role: 'user' }, params: { id: '1' } };
+  const res = mockRes();
+  await ctrl.get(req, res);
+  db.query = originalQuery;
+
+  assert.equal(res.statusCode, 200);
+  assert.equal('share_token' in res.body, false);
+});
+
+test('get — the owner and admins still receive share_token', async () => {
+  const originalQuery = db.query;
+  db.query = async (sql) => {
+    if (sql.includes('LEFT JOIN survey_shares')) return [[{ id: 1 }]];
+    if (sql.includes('FROM surveys WHERE id')) return [[{ id: 1, user_id: 9, title: 'x', share_token: 'secret-token' }]];
+    if (sql.includes('FROM questions')) return [[]];
+    return [[]];
+  };
+  for (const user of [{ id: 9, role: 'user' }, { id: 5, role: 'admin' }]) {
+    const res = mockRes();
+    await ctrl.get({ user, params: { id: '1' } }, res);
+    assert.equal(res.body.share_token, 'secret-token', `role ${user.role}`);
+  }
+  db.query = originalQuery;
+});

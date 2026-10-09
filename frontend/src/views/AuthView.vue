@@ -29,7 +29,12 @@
         <!-- Login -->
         <form v-if="tab === 'login'" style="display:flex;flex-direction:column;gap:13px;" @submit.prevent="doLogin">
           <div class="field"><label>ไอดี หรือ อีเมล</label><input v-model="login.identifier" type="text" placeholder="username หรือ email" required></div>
-          <div class="field"><label>รหัสผ่าน</label><input v-model="login.password" type="password" placeholder="••••••••" required></div>
+          <div class="field"><label>รหัสผ่าน</label>
+            <div class="pw-wrap">
+              <input v-model="login.password" :type="show.login ? 'text' : 'password'" placeholder="••••••••" required>
+              <button type="button" class="pw-toggle" tabindex="-1" :aria-label="show.login ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'" @mousedown.prevent @click="show.login = !show.login"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line v-if="show.login" x1="3" y1="3" x2="21" y2="21"/></svg></button>
+            </div>
+          </div>
           <button type="button" class="forgot-link" @click="tab = 'forgot'">ลืมรหัสผ่าน?</button>
           <p v-if="error" style="color:var(--red);font-size:12px;">{{ error }}</p>
           <button type="submit" class="btn-primary" :disabled="busy">{{ busy ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ' }}</button>
@@ -44,8 +49,18 @@
           </div>
           <div class="field"><label>ไอดีผู้ใช้</label><input v-model="reg.username" type="text" placeholder="somchai99" required></div>
           <div class="field"><label>อีเมล</label><input v-model="reg.email" type="email" placeholder="email@example.com" required></div>
-          <div class="field"><label>รหัสผ่าน</label><input v-model="reg.password" type="password" placeholder="อย่างน้อย 8 ตัว" minlength="8" required></div>
-          <div class="field"><label>ยืนยันรหัสผ่าน</label><input v-model="reg.confirm_password" type="password" placeholder="กรอกรหัสผ่านอีกครั้ง" required></div>
+          <div class="field"><label>รหัสผ่าน</label>
+            <div class="pw-wrap">
+              <input v-model="reg.password" :type="show.reg ? 'text' : 'password'" placeholder="อย่างน้อย 8 ตัว" minlength="8" required>
+              <button type="button" class="pw-toggle" tabindex="-1" :aria-label="show.reg ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'" @mousedown.prevent @click="show.reg = !show.reg"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line v-if="show.reg" x1="3" y1="3" x2="21" y2="21"/></svg></button>
+            </div>
+          </div>
+          <div class="field"><label>ยืนยันรหัสผ่าน</label>
+            <div class="pw-wrap">
+              <input v-model="reg.confirm_password" :type="show.regConfirm ? 'text' : 'password'" placeholder="กรอกรหัสผ่านอีกครั้ง" required>
+              <button type="button" class="pw-toggle" tabindex="-1" :aria-label="show.regConfirm ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'" @mousedown.prevent @click="show.regConfirm = !show.regConfirm"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line v-if="show.regConfirm" x1="3" y1="3" x2="21" y2="21"/></svg></button>
+            </div>
+          </div>
           <p v-if="error" style="color:var(--red);font-size:12px;">{{ error }}</p>
           <button type="submit" class="btn-primary" :disabled="busy">{{ busy ? 'กำลังสร้างบัญชี...' : 'สร้างบัญชี' }}</button>
           <p class="auth-footer-link">มีบัญชีแล้ว? <a @click="tab = 'login'">เข้าสู่ระบบ</a></p>
@@ -77,8 +92,18 @@
         <form v-else style="display:flex;flex-direction:column;gap:13px;" @submit.prevent="doResetWithCode">
           <button type="button" class="back-link" @click="forgotStep = 'code'">← กลับ</button>
           <p style="font-size:13px;color:var(--text3);">รหัสยืนยันถูกต้อง ตั้งรหัสผ่านใหม่ของคุณด้านล่าง</p>
-          <div class="field"><label>รหัสผ่านใหม่</label><input v-model="otpPassword" type="password" placeholder="อย่างน้อย 8 ตัว" minlength="8" required autofocus></div>
-          <div class="field"><label>ยืนยันรหัสผ่านใหม่</label><input v-model="otpConfirm" type="password" placeholder="กรอกรหัสผ่านอีกครั้ง" required></div>
+          <div class="field"><label>รหัสผ่านใหม่</label>
+            <div class="pw-wrap">
+              <input v-model="otpPassword" :type="show.newPw ? 'text' : 'password'" placeholder="อย่างน้อย 8 ตัว" minlength="8" required autofocus>
+              <button type="button" class="pw-toggle" tabindex="-1" :aria-label="show.newPw ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'" @mousedown.prevent @click="show.newPw = !show.newPw"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line v-if="show.newPw" x1="3" y1="3" x2="21" y2="21"/></svg></button>
+            </div>
+          </div>
+          <div class="field"><label>ยืนยันรหัสผ่านใหม่</label>
+            <div class="pw-wrap">
+              <input v-model="otpConfirm" :type="show.newConfirm ? 'text' : 'password'" placeholder="กรอกรหัสผ่านอีกครั้ง" required>
+              <button type="button" class="pw-toggle" tabindex="-1" :aria-label="show.newConfirm ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'" @mousedown.prevent @click="show.newConfirm = !show.newConfirm"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line v-if="show.newConfirm" x1="3" y1="3" x2="21" y2="21"/></svg></button>
+            </div>
+          </div>
           <p v-if="error"    style="color:var(--red);font-size:12px;">{{ error }}</p>
           <button type="submit" class="btn-primary" :disabled="busy">{{ busy ? 'กำลังบันทึก...' : 'เปลี่ยนรหัสผ่าน' }}</button>
         </form>
@@ -106,6 +131,9 @@ const forgotStep = ref('email'); // 'email' → request OTP, 'code' → verify O
 const otpCode = ref('');
 const otpPassword = ref('');
 const otpConfirm = ref('');
+
+// สถานะเปิด/ปิดการแสดงรหัสผ่านของแต่ละช่อง (แยกกัน กดช่องหนึ่งอีกช่องไม่เปลี่ยนตาม)
+const show = ref({ login: false, reg: false, regConfirm: false, newPw: false, newConfirm: false });
 
 const login = ref({ identifier: '', password: '' });
 const reg = ref({ first_name: '', last_name: '', username: '', email: '', password: '', confirm_password: '' });
@@ -202,3 +230,25 @@ async function doRegister() {
   }
 }
 </script>
+
+<style scoped>
+.pw-wrap { position: relative; }
+.pw-wrap input { width: 100%; padding-right: 40px; }
+/* ซ่อนปุ่มตา/ปุ่มล้างค่าของ Edge ไม่ให้ซ้อนกับปุ่มของเรา */
+.pw-wrap input::-ms-reveal,
+.pw-wrap input::-ms-clear { display: none; }
+.pw-toggle {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: #8a94a6;
+}
+.pw-toggle:hover { color: #0f2a55; }
+</style>

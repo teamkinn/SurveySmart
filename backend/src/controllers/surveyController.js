@@ -89,7 +89,14 @@ exports.get = async (req, res) => {
       'SELECT * FROM questions WHERE survey_id = ? ORDER BY section_number, sort_order',
       [req.params.id]
     );
-    res.json({ ...surveys[0], questions });
+    // share_token gates public submissions (responseController.submit) — only
+    // the owner or an admin may see it. Someone the survey is merely shared
+    // with (a survey_shares row, or shared_all = 1, which is *every* user —
+    // and registration is open) could otherwise read it here and POST
+    // responses as if they'd been handed the public link.
+    const survey = { ...surveys[0] };
+    if (!isAdmin && survey.user_id !== req.user.id) delete survey.share_token;
+    res.json({ ...survey, questions });
   } catch (err) {
     console.error('surveyController error:', err.message);
     res.status(500).json({ message: 'เกิดข้อผิดพลาดภายในระบบ' });
