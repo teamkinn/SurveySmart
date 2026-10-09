@@ -225,6 +225,7 @@ import { useSurveyStore } from '@/stores/surveys';
 import api from '@/api';
 import { formatDate, badgeClass, badgeText, interpClass, interpText } from '@/composables/useSurveyStatus';
 import { localDateStr } from '@/composables/useLocalDate';
+import { orderChartData } from '@/composables/useLabelOrder';
 import QuestionChartCard from '@/components/Survey/QuestionChartCard.vue';
 import { useChartTypePrefs } from '@/composables/useChartTypePrefs';
 
@@ -435,7 +436,7 @@ watch(selectedId, async (id) => {
         answers.find(a => feedbackQuestionIds.has(a.question_id) && a.answer_text);
       return { ...r, answers, note: commentAns?.answer_text || null };
     });
-    charts.value = r2.data;
+    charts.value = orderChartData(r2.data);
   } catch (e) {
     if (selectedId.value !== id) return;
     showToast?.(e.response?.data?.message || 'โหลดข้อมูลแบบสอบถามไม่สำเร็จ');

@@ -278,6 +278,7 @@ import api from '@/api';
 import { badgeClass, badgeText, interpClass, interpText } from '@/composables/useSurveyStatus';
 import { openGoogleAuthPopup } from '@/composables/useGoogleOAuthPopup';
 import { localDateStr } from '@/composables/useLocalDate';
+import { sortFilterLabels, orderChartData } from '@/composables/useLabelOrder';
 import ImportResponsesCsvModal from '@/components/Survey/ImportResponsesCsvModal.vue';
 import QuestionChartCard from '@/components/Survey/QuestionChartCard.vue';
 import { useChartTypePrefs } from '@/composables/useChartTypePrefs';
@@ -440,6 +441,10 @@ watch(categoricalCharts, (list) => {
   }
 }, { immediate: true });
 
+// เปลี่ยนคำถามที่ใช้กรอง (เพศ -> การศึกษา ฯลฯ) แล้วค่าที่เลือกไว้เดิม (เช่น "หญิง")
+// ไม่มีอยู่ในคำถามใหม่ ทำให้ช่องว่างและผลลัพธ์เป็น 0 — รีเซ็ตกลับไปตัวบนสุด ("...: ทั้งหมด")
+watch(filterQuestionId, () => { filterGender.value = ''; });
+
 const selectedCategoricalChart = computed(() =>
   categoricalCharts.value.find(c => c.question_id === filterQuestionId.value) || null
 );
@@ -448,7 +453,7 @@ const selectedCategoricalQuestionText = computed(() => selectedCategoricalChart.
 const genderOptions = computed(() => {
   const cat = selectedCategoricalChart.value;
   if (!cat) return [];
-  return cat.data.filter(d => d.count > 0).map(d => d.label);
+  return sortFilterLabels(cat.data.filter(d => d.count > 0).map(d => d.label));
 });
 
 const filteredResponses = computed(() =>
@@ -587,7 +592,7 @@ async function loadResponses() {
     api.get(`/surveys/${targetId}/responses/chart-data`),
   ]);
   if (seq !== loadSeq) return; // a newer load started while this was in flight
-  charts.value = r2.data;
+  charts.value = orderChartData(r2.data);
   chartPrefs.load(targetId);
   // Question ids this survey's chart-data identifies as open feedback by
   // TEXT (see isFeedbackQuestionText above) — used below as a fallback so a
